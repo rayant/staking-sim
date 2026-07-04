@@ -1,0 +1,415 @@
+<meta charset="utf-8">
+<title>Стейкинг $100 × $1: Монте-Карло дисперсии</title>
+<style>
+  :root{
+    --ink:#1c2823; --paper:#f5f7f4; --card:#ffffff; --felt:#1e6b4e; --felt-deep:#14503a;
+    --red:#b0433a; --muted:#64756c; --line:#dde4de; --gold:#b98a2f; --band:#e3ece6;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--paper);color:var(--ink);font:15px/1.55 system-ui,'Segoe UI',sans-serif;margin:0;padding:0 16px 64px}
+  .wrap{max-width:980px;margin:0 auto}
+  header{padding:36px 0 18px;border-bottom:3px solid var(--felt)}
+  h1{font-family:Georgia,'Times New Roman',serif;font-size:30px;line-height:1.2;margin:0 0 6px;text-wrap:balance}
+  h2{font-family:Georgia,serif;font-size:21px;margin:44px 0 12px;text-wrap:balance}
+  h3{font-size:15px;margin:18px 0 8px}
+  .sub{color:var(--muted);font-size:14px;max-width:70ch}
+  .eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--felt);font-weight:600}
+  .num,td.n,th.n{font-family:Consolas,'Cascadia Mono',monospace;font-variant-numeric:tabular-nums}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(140px,100%),1fr));gap:10px;margin:22px 0}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:12px 14px}
+  .kpi .v{font-family:Consolas,monospace;font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+  .kpi .l{font-size:12px;color:var(--muted);margin-top:2px}
+  .kpi .v.pos{color:var(--felt)} .kpi .v.neg{color:var(--red)} .kpi .v.gold{color:var(--gold)}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px 18px;margin:14px 0}
+  .controls{display:flex;flex-wrap:wrap;gap:16px 22px;align-items:flex-end}
+  .ctl{display:flex;flex-direction:column;gap:4px;min-width:120px}
+  .ctl label{font-size:12px;color:var(--muted)}
+  .ctl select,.ctl input[type=range]{accent-color:var(--felt)}
+  .ctl select{padding:5px 8px;border:1px solid var(--line);border-radius:5px;background:#fff;font:inherit}
+  .ctl .rv{font-family:Consolas,monospace;font-size:13px}
+  button{background:var(--felt);color:#fff;border:0;border-radius:6px;padding:9px 22px;font:600 14px system-ui;cursor:pointer}
+  button:hover{background:var(--felt-deep)}
+  button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+  svg{display:block;max-width:100%;height:auto}
+  .chartbox{overflow-x:auto}
+  table{border-collapse:collapse;width:100%;font-size:13.5px}
+  th{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:left;padding:7px 10px;border-bottom:2px solid var(--line)}
+  td{padding:6px 10px;border-bottom:1px solid var(--line)}
+  th.n,td.n{text-align:right}
+  tr.hl td{background:var(--band)}
+  .tablebox{overflow-x:auto}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:600}
+  .pill.buy{background:var(--band);color:var(--felt-deep)}
+  .pill.mem{background:#f3ead6;color:var(--gold)}
+  .note{background:var(--band);border-left:3px solid var(--felt);padding:12px 16px;border-radius:0 6px 6px 0;font-size:14px;margin:14px 0}
+  .warn{background:#f6ebe9;border-left:3px solid var(--red)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12.5px;color:var(--muted);margin:6px 2px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .sw{width:18px;height:10px;border-radius:2px;display:inline-block}
+  footer{margin-top:48px;color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padding-top:14px}
+  ul{padding-left:22px} li{margin:4px 0}
+  .flash{transition:opacity .25s} @media(prefers-reduced-motion:reduce){.flash{transition:none}}
+</style>
+<div class="wrap">
+<header>
+  <div class="eyebrow">poket-stacker · research</div>
+  <h1>Депозит $100, по $1 в лучшие оферы: сколько дисперсии придётся пережить</h1>
+  <div class="sub">Монте-Карло на реальном пуле BUY-оферов PokerStake (GGPoker) и SharkScope-стате наших «лошадей».
+  Каждая ставка: $1 в топ-офер по backer-ROI, выигрыш моделируется усечённым Парето-хвостом MTT-выплат.</div>
+</header>
+
+<div class="kpis" id="kpis"></div>
+
+<div class="panel">
+  <div class="controls">
+    <div class="ctl"><label for="pool">Пул оферов</label>
+      <select id="pool">
+        <option value="top25">Топ-25 по backer-ROI</option>
+        <option value="all" selected>Все BUY (151)</option>
+        <option value="lo">Низкие ставки: бай-ин &lt; $50</option>
+        <option value="mid">Средние: $50–200</option>
+        <option value="hi">Высокие: $200+</option>
+      </select></div>
+    <div class="ctl"><label for="itm">ITM игрока: <span class="rv" id="itmV">16%</span></label>
+      <input type="range" id="itm" min="10" max="22" value="16" step="1"></div>
+    <div class="ctl"><label for="hor">Горизонт, ставок</label>
+      <select id="hor"><option>250</option><option>500</option><option selected>1000</option><option>2000</option></select></div>
+    <div class="ctl"><label for="conc">Ставок в день</label>
+      <select id="conc"><option>10</option><option selected>25</option><option>50</option></select></div>
+    <div class="ctl"><label for="cap">Жирность хвоста: <span class="rv" id="capV">1.0×</span></label>
+      <input type="range" id="cap" min="5" max="20" value="10" step="1"></div>
+    <div class="ctl"><button id="run">Пересчитать</button></div>
+  </div>
+</div>
+
+<h2>Веер траекторий банкролла</h2>
+<div class="sub" id="fanSub"></div>
+<div class="panel chartbox flash" id="fanBox"></div>
+<div class="legend">
+  <span><span class="sw" style="background:#cfe3d6"></span>5–95 перцентиль</span>
+  <span><span class="sw" style="background:#8fc3a4"></span>25–75 перцентиль</span>
+  <span><span class="sw" style="background:var(--felt-deep);height:3px"></span>медиана</span>
+  <span><span class="sw" style="background:var(--gold);height:3px"></span>среднее (EV)</span>
+  <span><span class="sw" style="background:#b0433a88;height:2px"></span>случайные пути</span>
+</div>
+
+<h2>Распределение итогового банкролла</h2>
+<div class="grid2">
+  <div class="panel chartbox flash" id="histBox"></div>
+  <div class="panel" id="distStats"></div>
+</div>
+
+<h2>Низкие ставки или побольше?</h2>
+<div class="sub">Одинаковые параметры, четыре пула — сравнение эджа, дисперсии и того, что реально останется в кармане.</div>
+<div class="panel tablebox" id="cmpBox"></div>
+<div class="panel chartbox flash" id="cmpChart"></div>
+<div class="note" id="cmpNote"></div>
+
+<h2>Лошади: стата ROI по SharkScope</h2>
+<div class="sub">ROI = совокупный (профит ÷ сумма бай-инов), как считает анализатор. Av.ROI (средний по-турнирный) сильно занижает
+хайвариансных игроков — приведён для сравнения. <b>ITM в GG-стате SharkScope отсутствует</b> — в модели это параметр (слайдер выше).</div>
+<div class="panel tablebox" id="horseBox"></div>
+
+<h2>Что важно понимать</h2>
+<div class="note" id="kellyNote"></div>
+<div class="note warn">
+  <b>Ограничения модели.</b>
+  <ul>
+    <li>SharkScope-стата GG заморожена на сен-2023 (GG закрыл трекинг) — форма игрока могла измениться; анализатор режет за это confidence.</li>
+    <li>Выборка — выжившие: продавцы с плюсовой историей чаще остаются на маркете (ROI пула, скорее всего, завышен).</li>
+    <li>ITM и структура выплат — модельные: поле оценено по бай-ину, минкеш 1.5×, хвост — усечённое Парето. PKO-турниры (баунти) сглаживают хвост — реальная дисперсия чуть ниже модельной при том же ROI.</li>
+    <li>Локальный пул = 151 BUY-оферов по 110 игрокам со статой (снапшот 30.06–02.07). В прод-БД стата полнее (185 игроков, 169 BUY, включая топ-находку Lucky-Lucky — она добавлена вручную). Наши собственные закрытые позиции (portfolio) дали бы эмпирический ITM — они в прод-БД, для точной калибровки нужен SSH-доступ.</li>
+  </ul>
+</div>
+
+<footer>Данные: PokerStake public API (venueId 23, снапшот 3670 оферов) + SharkScope GGNetwork (110 игроков, ≥1000 игр для скоринга) ·
+формулы = AnalyzerService poket-stacker: backer_roi=(roi_eff−premium)/markup, haircut 15%/× сверх 2× ABI · 04.07.2026</footer>
+</div>
+
+<script>
+'use strict';
+const DATA = {"buy":[{"b":150,"m":0.8,"r":0,"br":0.25,"o":95,"s":"XtremeRelax"},{"b":215,"m":1,"r":0.0557,"br":0.0557,"o":90,"s":"eltutuca1987"},{"b":400,"m":1,"r":0.0557,"br":0.0557,"o":90,"s":"eltutuca1987"},{"b":108,"m":1,"r":0.2794,"br":0.2794,"o":75,"s":"msxiter"},{"b":250,"m":1,"r":0.0557,"br":0.0557,"o":90,"s":"eltutuca1987"},{"b":108,"m":1,"r":0.2794,"br":0.2794,"o":75,"s":"msxiter"},{"b":200,"m":1,"r":0.0557,"br":0.0557,"o":90,"s":"eltutuca1987"},{"b":250,"m":1,"r":0.0557,"br":0.0557,"o":90,"s":"eltutuca1987"},{"b":150,"m":1,"r":0.2794,"br":0.2794,"o":75,"s":"msxiter"},{"b":100,"m":1,"r":0.0557,"br":0.0557,"o":90,"s":"eltutuca1987"},{"b":100,"m":1,"r":0.2794,"br":0.2794,"o":75,"s":"msxiter"},{"b":100,"m":1,"r":0.0782,"br":0.0782,"o":80,"s":"Chris Oliver"},{"b":54,"m":1,"r":0.0782,"br":0.0782,"o":80,"s":"Chris Oliver"},{"b":250,"m":1,"r":0.0782,"br":0.0782,"o":83,"s":"Chris Oliver"},{"b":108,"m":1,"r":0.0782,"br":0.0782,"o":84,"s":"Chris Oliver"},{"b":108,"m":1,"r":0.0782,"br":0.0782,"o":80,"s":"Chris Oliver"},{"b":108,"m":1,"r":0.0782,"br":0.0782,"o":83,"s":"Chris Oliver"},{"b":66,"m":1,"r":0.0782,"br":0.0782,"o":75,"s":"Chris Oliver"},{"b":54,"m":1,"r":0.0782,"br":0.0782,"o":80,"s":"Chris Oliver"},{"b":77,"m":1,"r":0.0782,"br":0.0782,"o":75,"s":"Chris Oliver"},{"b":88,"m":1.01,"r":0.2794,"br":0.2667,"o":65,"s":"msxiter"},{"b":108,"m":1.01,"r":0.0782,"br":0.0675,"o":80,"s":"Chris Oliver"},{"b":30,"m":1.01,"r":0.0782,"br":0.0675,"o":80,"s":"Chris Oliver"},{"b":100,"m":1.02,"r":0.1709,"br":0.1479,"o":90,"s":"Runner1"},{"b":30,"m":1.02,"r":0.0782,"br":0.057,"o":80,"s":"Chris Oliver"},{"b":525,"m":1.03,"r":0.2709,"br":0.2339,"o":50,"s":"V Balaev"},{"b":525,"m":1.03,"r":0.2709,"br":0.2339,"o":50,"s":"V Balaev"},{"b":250,"m":1.04,"r":0.1743,"br":0.1292,"o":60,"s":"G Zisimopoulos"},{"b":60,"m":1.05,"r":0.2794,"br":0.2185,"o":75,"s":"msxiter"},{"b":77,"m":1.05,"r":0.2794,"br":0.2185,"o":75,"s":"msxiter"},{"b":215,"m":1.05,"r":0.1743,"br":0.1184,"o":50,"s":"G Zisimopoulos"},{"b":525,"m":1.05,"r":0.2709,"br":0.2104,"o":50,"s":"V Balaev"},{"b":250,"m":1.05,"r":0.1743,"br":0.1184,"o":60,"s":"G Zisimopoulos"},{"b":215,"m":1.05,"r":0.1743,"br":0.1184,"o":50,"s":"G Zisimopoulos"},{"b":88,"m":1.05,"r":0.1203,"br":0.067,"o":40,"s":"splashbros"},{"b":150,"m":1.05,"r":0.2753,"br":0.2145,"o":55,"s":"Santino Reg"},{"b":88,"m":1.05,"r":0.1203,"br":0.067,"o":40,"s":"splashbros"},{"b":525,"m":1.05,"r":0.2709,"br":0.2104,"o":50,"s":"V Balaev"},{"b":150,"m":1.05,"r":0.2753,"br":0.2145,"o":55,"s":"Santino Reg"},{"b":50,"m":1.05,"r":0.3161,"br":0.2534,"o":50,"s":"Stikelbaarch"},{"b":320,"m":1.06,"r":0.1743,"br":0.1079,"o":60,"s":"G Zisimopoulos"},{"b":125,"m":1.06,"r":0.1743,"br":0.1079,"o":50,"s":"G Zisimopoulos"},{"b":40,"m":1.06,"r":0.17,"br":0.1038,"o":100,"s":"Random Donk"},{"b":250,"m":1.06,"r":0.1743,"br":0.1079,"o":60,"s":"G Zisimopoulos"},{"b":77,"m":1.07,"r":0.2724,"br":0.1891,"o":70,"s":"LeviAckerman1"},{"b":54,"m":1.07,"r":0.2724,"br":0.1891,"o":70,"s":"LeviAckerman1"},{"b":150,"m":1.07,"r":0.1709,"br":0.0943,"o":75,"s":"Runner1"},{"b":525,"m":1.07,"r":0.2709,"br":0.1878,"o":50,"s":"V Balaev"},{"b":50,"m":1.07,"r":0.1924,"br":0.1144,"o":75,"s":"Nikos Valtatzis"},{"b":525,"m":1.07,"r":0.2709,"br":0.1878,"o":50,"s":"V Balaev"},{"b":525,"m":1.07,"r":0.1683,"br":0.0919,"o":75,"s":"HotBoy19"},{"b":5.4,"m":1.08,"r":0.3605,"br":0.2597,"o":80,"s":"AlexGrin"},{"b":150,"m":1.08,"r":0.4654,"br":0.3568,"o":50,"s":"M Alexandru"},{"b":3.2,"m":1.08,"r":0.3605,"br":0.2597,"o":80,"s":"AlexGrin"},{"b":2.5,"m":1.08,"r":0.3605,"br":0.2597,"o":80,"s":"AlexGrin"},{"b":3.2,"m":1.08,"r":0.3605,"br":0.2597,"o":80,"s":"AlexGrin"},{"b":50,"m":1.08,"r":0.1924,"br":0.1041,"o":75,"s":"Nikos Valtatzis"},{"b":108,"m":1.09,"r":0.2794,"br":0.1738,"o":50,"s":"msxiter"},{"b":54,"m":1.09,"r":0.2794,"br":0.1738,"o":50,"s":"msxiter"},{"b":54,"m":1.09,"r":0.2794,"br":0.1738,"o":50,"s":"msxiter"},{"b":54,"m":1.09,"r":0.1924,"br":0.0939,"o":75,"s":"Nikos Valtatzis"},{"b":30,"m":1.09,"r":0.17,"br":0.0734,"o":100,"s":"Random Donk"},{"b":30,"m":1.09,"r":0.17,"br":0.0734,"o":100,"s":"Random Donk"},{"b":30,"m":1.09,"r":0.17,"br":0.0734,"o":100,"s":"Random Donk"},{"b":30,"m":1.09,"r":0.17,"br":0.0734,"o":100,"s":"Random Donk"},{"b":21.6,"m":1.1,"r":0.1974,"br":0.0886,"o":40,"s":"Pedro the Bear"},{"b":21.6,"m":1.1,"r":0.1974,"br":0.0886,"o":40,"s":"Pedro the Bear"},{"b":21.6,"m":1.1,"r":0.1974,"br":0.0886,"o":40,"s":"Pedro the Bear"},{"b":5.4,"m":1.1,"r":0.1938,"br":0.0853,"o":90,"s":"Apstrik"},{"b":21.6,"m":1.1,"r":0.1752,"br":0.0684,"o":50,"s":"alkes24rus"},{"b":21.6,"m":1.1,"r":0.1752,"br":0.0684,"o":50,"s":"alkes24rus"},{"b":21.6,"m":1.1,"r":0.1974,"br":0.0886,"o":40,"s":"Pedro the Bear"},{"b":5.4,"m":1.1,"r":0.1938,"br":0.0853,"o":90,"s":"Apstrik"},{"b":10.8,"m":1.1,"r":0.2139,"br":0.1035,"o":30,"s":"XtremeRelax"},{"b":30,"m":1.1,"r":0.6656,"br":0.5142,"o":50,"s":"VIEMK"},{"b":10.8,"m":1.1,"r":0.2139,"br":0.1035,"o":30,"s":"XtremeRelax"},{"b":10.8,"m":1.1,"r":0.2139,"br":0.1035,"o":30,"s":"XtremeRelax"},{"b":50,"m":1.1,"r":0.1924,"br":0.084,"o":75,"s":"Nikos Valtatzis"},{"b":840,"m":1.1,"r":0.2709,"br":0.1554,"o":50,"s":"V Balaev"},{"b":80,"m":1.1,"r":0.2753,"br":0.1593,"o":55,"s":"Santino Reg"},{"b":10,"m":1.1,"r":0.2139,"br":0.1035,"o":30,"s":"XtremeRelax"},{"b":10.8,"m":1.1,"r":0.2139,"br":0.1035,"o":30,"s":"XtremeRelax"},{"b":54,"m":1.1,"r":0.1709,"br":0.0644,"o":80,"s":"Runner1"},{"b":80,"m":1.1,"r":0.2753,"br":0.1593,"o":55,"s":"Santino Reg"},{"b":80,"m":1.1,"r":0.2753,"br":0.1593,"o":55,"s":"Santino Reg"},{"b":54,"m":1.1,"r":0.1709,"br":0.0644,"o":80,"s":"Runner1"},{"b":10.8,"m":1.1,"r":0.2139,"br":0.1035,"o":30,"s":"XtremeRelax"},{"b":100,"m":1.1,"r":0.2753,"br":0.1593,"o":55,"s":"Santino Reg"},{"b":100,"m":1.1,"r":0.2753,"br":0.1593,"o":55,"s":"Santino Reg"},{"b":66,"m":1.1,"r":0.3161,"br":0.1965,"o":50,"s":"Stikelbaarch"},{"b":54,"m":1.11,"r":0.1924,"br":0.0742,"o":75,"s":"Nikos Valtatzis"},{"b":30,"m":1.11,"r":0.1924,"br":0.0742,"o":75,"s":"Nikos Valtatzis"},{"b":54,"m":1.11,"r":0.1924,"br":0.0742,"o":75,"s":"Nikos Valtatzis"},{"b":54,"m":1.11,"r":0.3161,"br":0.1857,"o":50,"s":"Stikelbaarch"},{"b":100,"m":1.11,"r":0.2753,"br":0.1489,"o":55,"s":"Santino Reg"},{"b":88,"m":1.11,"r":0.1709,"br":0.0548,"o":75,"s":"Runner1"},{"b":88,"m":1.11,"r":0.1743,"br":0.058,"o":30,"s":"G Zisimopoulos"},{"b":10.8,"m":1.12,"r":1,"br":0.7857,"o":90,"s":"Hellblade-"},{"b":54,"m":1.12,"r":0.3161,"br":0.1751,"o":50,"s":"Stikelbaarch"},{"b":44,"m":1.12,"r":0.1924,"br":0.0646,"o":75,"s":"Nikos Valtatzis"},{"b":54,"m":1.12,"r":0.3161,"br":0.1751,"o":50,"s":"Stikelbaarch"},{"b":108,"m":1.13,"r":0.2753,"br":0.1286,"o":50,"s":"Santino Reg"},{"b":54,"m":1.13,"r":0.1924,"br":0.0552,"o":75,"s":"Nikos Valtatzis"},{"b":88,"m":1.13,"r":0.2753,"br":0.1286,"o":50,"s":"Santino Reg"},{"b":108,"m":1.13,"r":0.2753,"br":0.1286,"o":50,"s":"Santino Reg"},{"b":108,"m":1.13,"r":0.2753,"br":0.1286,"o":50,"s":"Santino Reg"},{"b":108,"m":1.13,"r":0.2753,"br":0.1286,"o":50,"s":"Santino Reg"},{"b":108,"m":1.13,"r":0.2753,"br":0.1286,"o":50,"s":"Santino Reg"},{"b":21.6,"m":1.15,"r":0.2424,"br":0.0803,"o":80,"s":"A 2 3"},{"b":25,"m":1.15,"r":0.3309,"br":0.1573,"o":60,"s":"SLAVENCHEZ2517"},{"b":21.6,"m":1.15,"r":0.6656,"br":0.4484,"o":50,"s":"VIEMK"},{"b":10.8,"m":1.15,"r":0.4937,"br":0.2989,"o":80,"s":"SilkSpectre"},{"b":66,"m":1.15,"r":0.3161,"br":0.1444,"o":50,"s":"Stikelbaarch"},{"b":40,"m":1.15,"r":0.2327,"br":0.0719,"o":50,"s":"I Yastremskyi"},{"b":25,"m":1.15,"r":0.3309,"br":0.1573,"o":60,"s":"SLAVENCHEZ2517"},{"b":54,"m":1.15,"r":0.3161,"br":0.1444,"o":50,"s":"Stikelbaarch"},{"b":25,"m":1.15,"r":0.3309,"br":0.1573,"o":60,"s":"SLAVENCHEZ2517"},{"b":10.8,"m":1.15,"r":0.4937,"br":0.2989,"o":80,"s":"SilkSpectre"},{"b":10,"m":1.15,"r":0.4937,"br":0.2989,"o":80,"s":"SilkSpectre"},{"b":10.8,"m":1.15,"r":0.4937,"br":0.2989,"o":80,"s":"SilkSpectre"},{"b":15,"m":1.15,"r":0.4937,"br":0.2989,"o":80,"s":"SilkSpectre"},{"b":10.8,"m":1.15,"r":0.4937,"br":0.2989,"o":80,"s":"SilkSpectre"},{"b":15,"m":1.15,"r":0.4937,"br":0.2989,"o":80,"s":"SilkSpectre"},{"b":108,"m":1.16,"r":0.2753,"br":0.0994,"o":40,"s":"Santino Reg"},{"b":54,"m":1.16,"r":0.3161,"br":0.1346,"o":50,"s":"Stikelbaarch"},{"b":150,"m":1.17,"r":0.2753,"br":0.09,"o":40,"s":"Santino Reg"},{"b":108,"m":1.17,"r":0.2677,"br":0.0835,"o":40,"s":"V Bartko"},{"b":25,"m":1.17,"r":0.3161,"br":0.1249,"o":50,"s":"Stikelbaarch"},{"b":5.5,"m":1.18,"r":0.3605,"br":0.153,"o":80,"s":"AlexGrin"},{"b":2.5,"m":1.18,"r":0.3605,"br":0.153,"o":80,"s":"AlexGrin"},{"b":3.2,"m":1.18,"r":0.3605,"br":0.153,"o":80,"s":"AlexGrin"},{"b":3.2,"m":1.18,"r":0.3605,"br":0.153,"o":80,"s":"AlexGrin"},{"b":215,"m":1.18,"r":0.2677,"br":0.0743,"o":40,"s":"V Bartko"},{"b":32,"m":1.19,"r":0.3161,"br":0.106,"o":50,"s":"Stikelbaarch"},{"b":21.6,"m":1.2,"r":0.4844,"br":0.237,"o":80,"s":"Vadim Danerian"},{"b":54,"m":1.2,"r":1,"br":0.6667,"o":69,"s":"VIEMK"},{"b":15,"m":1.2,"r":0.3309,"br":0.1091,"o":50,"s":"SLAVENCHEZ2517"},{"b":108,"m":1.2,"r":0.2753,"br":0.0627,"o":40,"s":"Santino Reg"},{"b":10.8,"m":1.2,"r":0.4937,"br":0.2448,"o":80,"s":"SilkSpectre"},{"b":8.88,"m":1.2,"r":0.3309,"br":0.1091,"o":50,"s":"SLAVENCHEZ2517"},{"b":5.4,"m":1.2,"r":0.4937,"br":0.2448,"o":80,"s":"SilkSpectre"},{"b":5.4,"m":1.2,"r":0.4937,"br":0.2448,"o":80,"s":"SilkSpectre"},{"b":8,"m":1.2,"r":0.4937,"br":0.2448,"o":80,"s":"SilkSpectre"},{"b":25,"m":1.2,"r":0.6656,"br":0.388,"o":50,"s":"VIEMK"},{"b":15,"m":1.2,"r":0.3309,"br":0.1091,"o":50,"s":"SLAVENCHEZ2517"},{"b":15,"m":1.2,"r":0.6656,"br":0.388,"o":50,"s":"VIEMK"},{"b":25,"m":1.2,"r":0.3309,"br":0.1091,"o":50,"s":"SLAVENCHEZ2517"},{"b":8.88,"m":1.2,"r":0.3309,"br":0.1091,"o":50,"s":"SLAVENCHEZ2517"},{"b":25,"m":1.2,"r":0.6656,"br":0.388,"o":50,"s":"VIEMK"},{"b":25,"m":1.2,"r":0.3161,"br":0.0968,"o":50,"s":"Stikelbaarch"},{"b":21.6,"m":1.2,"r":0.3309,"br":0.1091,"o":50,"s":"SLAVENCHEZ2517"}],"horses":[{"a":"Hellblade-","g":3045,"abi":4,"roi":1.209,"rav":0.766,"tp":13978,"l":79,"s":"batch1"},{"a":"Lucky-Lucky","g":10800,"abi":83,"roi":0.712,"rav":0.026,"tp":635769,"l":97,"s":"memory-batch2"},{"a":"VIEMK","g":4827,"abi":19,"roi":0.666,"rav":0.01,"tp":84770,"l":88,"s":"batch1"},{"a":"huower","g":4606,"abi":9,"roi":0.629,"rav":0.518,"tp":27985,"l":80,"s":"batch1"},{"a":"SilkSpectre","g":4157,"abi":10,"roi":0.494,"rav":0.762,"tp":20325,"l":80,"s":"allrooms-recovered"},{"a":"Vadim Danerian","g":5246,"abi":15,"roi":0.484,"rav":0.042,"tp":51988,"l":83,"s":"allrooms-recovered"},{"a":"M Alexandru","g":2207,"abi":94,"roi":0.465,"rav":0.145,"tp":113588,"l":97,"s":"batch1"},{"a":"IIFerchote","g":3862,"abi":2,"roi":0.432,"rav":0.284,"tp":3356,"l":73,"s":"batch1"},{"a":"MagiaW11","g":2516,"abi":15,"roi":0.415,"rav":0.596,"tp":21045,"l":86,"s":"batch1"},{"a":"xdhilal69","g":1072,"abi":7,"roi":0.409,"rav":0.726,"tp":3424,"l":76,"s":"batch1"},{"a":"AlexGrin","g":2414,"abi":3,"roi":0.361,"rav":0.229,"tp":2900,"l":74,"s":"batch1"},{"a":"SLAVENCHEZ2517","g":9259,"abi":18,"roi":0.331,"rav":0.357,"tp":56515,"l":84,"s":"batch1"},{"a":"Ivooory","g":3852,"abi":3,"roi":0.330,"rav":0.41,"tp":4240,"l":75,"s":"batch1"},{"a":"Stikelbaarch","g":2755,"abi":34,"roi":0.316,"rav":0.724,"tp":36231,"l":93,"s":"batch1"},{"a":"Xapilskinha","g":5534,"abi":207,"roi":0.305,"rav":0.134,"tp":415474,"l":98,"s":"batch1"},{"a":"Duckzman","g":9602,"abi":7,"roi":0.304,"rav":0.237,"tp":25016,"l":79,"s":"batch1"},{"a":"hello_totti","g":5514,"abi":22,"roi":0.295,"rav":0.382,"tp":38597,"l":87,"s":"batch1"},{"a":"msxiter","g":14566,"abi":93,"roi":0.279,"rav":0.262,"tp":381259,"l":97,"s":"batch1"}]};
+
+// ---------- payout model: truncated Pareto tail over mincash ----------
+const M0 = 1.5; // min-cash multiplier
+function tpMean(a,m0,cap){ if(Math.abs(a-1)<1e-9)a=1+1e-6; const q=Math.pow(m0/cap,a);
+  return a*Math.pow(m0,a)*(Math.pow(cap,1-a)-Math.pow(m0,1-a))/((1-a)*(1-q)); }
+function tpM2(a,m0,cap){ if(Math.abs(a-2)<1e-9)a=2+1e-6; const q=Math.pow(m0/cap,a);
+  return a*Math.pow(m0,a)*(Math.pow(cap,2-a)-Math.pow(m0,2-a))/((2-a)*(1-q)); }
+function solveAlpha(target,m0,cap){
+  if(target<=m0*1.02) return 25;
+  let lo=0.05,hi=25;
+  if(tpMean(lo,m0,cap)<target) return lo; // cap too low to reach mean — model floors EV slightly
+  for(let i=0;i<60;i++){ const mid=(lo+hi)/2; (tpMean(mid,m0,cap)>target)?lo=mid:hi=mid; }
+  return (lo+hi)/2;
+}
+function fieldSize(b){ return Math.max(120,Math.min(8000,6000*Math.pow(b,-0.5))); }
+
+function prepPool(offers,itm,capScale){
+  return offers.map(o=>{
+    const cap=Math.max(M0*2,0.13*fieldSize(o.b)*capScale);
+    const target=(1+o.r)/itm;
+    const a=solveAlpha(target,M0,cap);
+    const q=Math.pow(M0/cap,a);
+    const stake=Math.min(1,o.o/100*o.b*o.m);
+    const evM=tpMean(a,M0,cap)*itm, ev=evM/o.m-1;                 // realized per-$1 edge after cap
+    const varX=itm*tpM2(a,M0,cap)/(o.m*o.m)-Math.pow(evM/o.m,2); // per-$1 variance
+    return {a,q,cap,m:o.m,stake,ev,sd:Math.sqrt(varX)};
+  });
+}
+function sampleM(p){ const u=Math.random(); return M0*Math.pow(1-u*(1-p.q),-1/p.a); }
+
+// ---------- Monte-Carlo ----------
+function simulate(pool,opts){
+  const {nSims,horizon,conc,itm,start}=opts;
+  const rounds=Math.ceil(horizon/conc);
+  const pct=[5,25,50,75,95];
+  const chk=Array.from({length:rounds+1},()=>[]);
+  const finals=[],maxDDs=[]; let ruined=0;
+  const retSample=[]; const RS_MAX=120000;
+  for(let s=0;s<nSims;s++){
+    let bank=start,peak=start,maxDD=0,alive=true;
+    chk[0].push(bank);
+    for(let r=1;r<=rounds;r++){
+      if(alive){
+        const c=Math.min(conc,Math.floor(bank));
+        if(c<1){ alive=false; ruined++; }
+        else{
+          let net=0;
+          for(let i=0;i<c;i++){
+            const p=pool[(Math.random()*pool.length)|0];
+            const st=Math.min(p.stake,1);
+            let ret=0;
+            if(Math.random()<itm) ret=st*sampleM(p)/p.m;
+            net+=ret-st;
+            if(retSample.length<RS_MAX) retSample.push(st>0?(ret-st)/st:0);
+          }
+          bank+=net;
+          if(bank>peak)peak=bank;
+          const dd=(peak-bank)/peak; if(dd>maxDD)maxDD=dd;
+          if(bank<1){ alive=false; ruined++; bank=Math.max(bank,0); }
+        }
+      }
+      chk[r].push(bank);
+    }
+    finals.push(bank); maxDDs.push(maxDD);
+  }
+  const qs=arr=>{const a=[...arr].sort((x,y)=>x-y);return pct.map(p=>a[Math.min(a.length-1,Math.round(p/100*(a.length-1)))]);};
+  const bands=chk.map(qs);
+  const means=chk.map(a=>a.reduce((x,y)=>x+y,0)/a.length);
+  finals.sort((a,b)=>a-b);
+  const q=p=>finals[Math.min(finals.length-1,Math.round(p*(finals.length-1)))];
+  // concentration: share of gross wins from top 1% stakes
+  const wins=retSample.filter(x=>x>0).sort((a,b)=>b-a);
+  const grossW=wins.reduce((a,b)=>a+b,0);
+  const top1=wins.slice(0,Math.max(1,Math.round(retSample.length*0.01))).reduce((a,b)=>a+b,0);
+  const mu=retSample.reduce((a,b)=>a+b,0)/retSample.length;
+  const sg=Math.sqrt(retSample.reduce((a,b)=>a+(b-mu)*(b-mu),0)/retSample.length);
+  maxDDs.sort((a,b)=>a-b);
+  return {bands,means,finals,ruinP:ruined/nSims,
+    med:q(.5),p5:q(.05),p95:q(.95),mean:means[means.length-1],
+    pLoss:finals.filter(f=>f<start).length/nSims,
+    pHalf:maxDDs.filter(d=>d>=0.5).length/nSims,
+    ddMed:maxDDs[Math.round(0.5*(maxDDs.length-1))],
+    edge:mu,sigma:sg,top1Share:grossW>0?top1/grossW:0,
+    itmWins:retSample.filter(x=>x>0).length/retSample.length,rounds,conc,chk};
+}
+
+// ---------- pools ----------
+function poolOffers(kind){
+  const b=DATA.buy;
+  if(kind==='top25') return [...b].sort((x,y)=>y.br-x.br).slice(0,25);
+  if(kind==='lo') return b.filter(o=>o.b<50);
+  if(kind==='mid') return b.filter(o=>o.b>=50&&o.b<200);
+  if(kind==='hi') return b.filter(o=>o.b>=200);
+  return b;
+}
+
+// ---------- SVG helpers ----------
+const NS='http://www.w3.org/2000/svg';
+function el(t,at){const e=document.createElementNS(NS,t);for(const k in at)e.setAttribute(k,at[k]);return e;}
+function fmt$(v){return '$'+(v>=1000?(v/1000).toFixed(1)+'k':v.toFixed(0));}
+function fmtP(v,d=0){return (v*100).toFixed(d)+'%';}
+
+function drawFan(box,res,horizon){
+  box.innerHTML='';
+  const W=920,H=380,L=52,R=14,T=14,B=30;
+  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,width:W,role:'img','aria-label':'Веер траекторий банкролла'});
+  const n=res.bands.length;
+  const yMax=Math.max(res.bands[n-1][4]*1.15,150), yMin=0;
+  const X=i=>L+(W-L-R)*i/(n-1), Y=v=>T+(H-T-B)*(1-(Math.min(v,yMax)-yMin)/(yMax-yMin));
+  const steps=5;
+  for(let g=0;g<=steps;g++){const v=yMin+(yMax-yMin)*g/steps;
+    svg.appendChild(el('line',{x1:L,x2:W-R,y1:Y(v),y2:Y(v),stroke:'#e5ebe6','stroke-width':1}));
+    const t=el('text',{x:L-6,y:Y(v)+4,'text-anchor':'end','font-size':11,fill:'#64756c','font-family':'Consolas,monospace'});
+    t.textContent=fmt$(v);svg.appendChild(t);}
+  for(let g=0;g<=4;g++){const i=Math.round((n-1)*g/4);
+    const t=el('text',{x:X(i),y:H-8,'text-anchor':'middle','font-size':11,fill:'#64756c','font-family':'Consolas,monospace'});
+    t.textContent=Math.round(horizon*g/4);svg.appendChild(t);}
+  const t2=el('text',{x:W-R,y:H-8,'text-anchor':'end','font-size':11,fill:'#64756c'});t2.textContent='ставок';svg.appendChild(t2);
+  function bandPath(loI,hiI){let d='M';
+    for(let i=0;i<n;i++)d+=`${X(i).toFixed(1)},${Y(res.bands[i][loI]).toFixed(1)} `;
+    for(let i=n-1;i>=0;i--)d+=`L${X(i).toFixed(1)},${Y(res.bands[i][hiI]).toFixed(1)} `;
+    return d+'Z';}
+  svg.appendChild(el('path',{d:bandPath(0,4),fill:'#cfe3d6',opacity:.75}));
+  svg.appendChild(el('path',{d:bandPath(1,3),fill:'#8fc3a4',opacity:.8}));
+  svg.appendChild(el('line',{x1:L,x2:W-R,y1:Y(100),y2:Y(100),stroke:'#64756c','stroke-dasharray':'2 4','stroke-width':1}));
+  const sims=res.chk[0].length;
+  for(let sp=0;sp<3;sp++){
+    const idx=(Math.random()*sims)|0;
+    let d='M';
+    for(let i=0;i<n;i++)d+=`${i?'L':''}${X(i).toFixed(1)},${Y(res.chk[i][idx]).toFixed(1)} `;
+    svg.appendChild(el('path',{d,fill:'none',stroke:'#b0433a',opacity:.45,'stroke-width':1.2}));
+  }
+  let dm='M',de='M';
+  for(let i=0;i<n;i++){dm+=`${i?'L':''}${X(i).toFixed(1)},${Y(res.bands[i][2]).toFixed(1)} `;
+    de+=`${i?'L':''}${X(i).toFixed(1)},${Y(res.means[i]).toFixed(1)} `;}
+  svg.appendChild(el('path',{d:de,fill:'none',stroke:'#b98a2f','stroke-width':2.2,'stroke-dasharray':'6 4'}));
+  svg.appendChild(el('path',{d:dm,fill:'none',stroke:'#14503a','stroke-width':2.6}));
+  const lab=(v,txt,col)=>{const t=el('text',{x:W-R-4,y:Y(v)-5,'text-anchor':'end','font-size':11.5,fill:col,'font-weight':600,'font-family':'Consolas,monospace'});t.textContent=txt;svg.appendChild(t);};
+  lab(res.bands[n-1][4],'P95 '+fmt$(res.bands[n-1][4]),'#3f7a5c');
+  lab(res.bands[n-1][2],'мед '+fmt$(res.med),'#14503a');
+  lab(res.bands[n-1][0],'P5 '+fmt$(res.p5),'#b0433a');
+  box.appendChild(svg);
+}
+
+function drawHist(box,finals){
+  box.innerHTML='';
+  const W=460,H=300,L=40,R=10,T=12,B=42;
+  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,width:'100%',role:'img','aria-label':'Гистограмма итогового банкролла'});
+  const edges=[0,25,50,75,100,150,200,300,450,700,1100,1e9];
+  const labels=['<25','25-50','50-75','75-100','100-150','150-200','200-300','300-450','450-700','700-1.1k','>1.1k'];
+  const cnt=new Array(edges.length-1).fill(0);
+  finals.forEach(f=>{for(let i=0;i<edges.length-1;i++)if(f>=edges[i]&&f<edges[i+1]){cnt[i]++;break;}});
+  const mx=Math.max(...cnt)/finals.length;
+  const bw=(W-L-R)/cnt.length;
+  cnt.forEach((c,i)=>{
+    const h=(H-T-B)*(c/finals.length)/mx;
+    const lossy=edges[i+1]<=100;
+    svg.appendChild(el('rect',{x:L+i*bw+2,y:H-B-h,width:bw-4,height:Math.max(h,0.5),rx:2,
+      fill:lossy?'#c98079':'#5fa080'}));
+    const t=el('text',{x:L+i*bw+bw/2,y:H-B+12,'text-anchor':'middle','font-size':9,fill:'#64756c','font-family':'Consolas,monospace'});
+    t.textContent=labels[i];svg.appendChild(t);
+    if(c>0){const p=el('text',{x:L+i*bw+bw/2,y:H-B-h-4,'text-anchor':'middle','font-size':9.5,fill:'#38473f','font-family':'Consolas,monospace'});
+      p.textContent=Math.round(100*c/finals.length)+'%';svg.appendChild(p);}
+  });
+  const cap=el('text',{x:L,y:H-6,'font-size':10.5,fill:'#64756c'});cap.textContent='итоговый банкролл, $ (старт $100 — граница цвета)';svg.appendChild(cap);
+  box.appendChild(svg);
+}
+
+function drawCmp(box,rows){
+  box.innerHTML='';
+  const W=920,H=270,L=170,R=30,T=24,B=26;
+  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,width:W,role:'img','aria-label':'Сравнение пулов: медиана и разброс'});
+  const xMax=Math.max(...rows.map(r=>r.p95))*1.06;
+  const X=v=>L+(W-L-R)*Math.min(v,xMax)/xMax;
+  rows.forEach((r,i)=>{
+    const y=T+(H-T-B)*(i+0.5)/rows.length;
+    const nm=el('text',{x:L-10,y:y+4,'text-anchor':'end','font-size':13,fill:'#1c2823','font-weight':600});nm.textContent=r.name;svg.appendChild(nm);
+    svg.appendChild(el('line',{x1:X(r.p5),x2:X(r.p95),y1:y,y2:y,stroke:'#9db8a8','stroke-width':3,'stroke-linecap':'round'}));
+    svg.appendChild(el('circle',{cx:X(r.med),cy:y,r:6,fill:'#14503a'}));
+    svg.appendChild(el('circle',{cx:X(r.mean),cy:y,r:4.5,fill:'none',stroke:'#b98a2f','stroke-width':2.2}));
+    const t=el('text',{x:X(r.p95)+8,y:y+4,'font-size':11,fill:'#64756c','font-family':'Consolas,monospace'});
+    t.textContent=fmt$(r.p95);svg.appendChild(t);
+  });
+  svg.appendChild(el('line',{x1:X(100),x2:X(100),y1:T-6,y2:H-B+6,stroke:'#b0433a','stroke-dasharray':'3 4','stroke-width':1.4}));
+  const s=el('text',{x:X(100),y:12,'text-anchor':'middle','font-size':10.5,fill:'#b0433a'});s.textContent='старт $100';svg.appendChild(s);
+  const cap=el('text',{x:W-R,y:12,'text-anchor':'end','font-size':10.5,fill:'#64756c'});
+  cap.textContent='линия = P5–P95 · точка = медиана · кольцо = EV';
+  svg.appendChild(cap);
+  box.appendChild(svg);
+}
+
+// ---------- render ----------
+function kpiCard(v,l,cls=''){return `<div class="kpi"><div class="v ${cls}">${v}</div><div class="l">${l}</div></div>`;}
+
+function run(){
+  const poolKind=document.getElementById('pool').value;
+  const itm=+document.getElementById('itm').value/100;
+  const horizon=+document.getElementById('hor').value;
+  const conc=+document.getElementById('conc').value;
+  const capScale=+document.getElementById('cap').value/10;
+  const offers=poolOffers(poolKind);
+  const pool=prepPool(offers,itm,capScale);
+  const res=simulate(pool,{nSims:3000,horizon,conc,itm,start:100});
+
+  const days=Math.ceil(horizon/conc);
+  document.getElementById('kpis').innerHTML=
+    kpiCard(fmtP(res.edge,1),'эдж на $1 ставки (реализованный в модели)',res.edge>0?'pos':'neg')+
+    kpiCard('±'+res.sigma.toFixed(1)+'x','σ одной ставки (в долях $1)','')+
+    kpiCard(fmt$(res.med),'медианный итог','')+
+    kpiCard(fmt$(res.mean),'средний итог (EV)','gold')+
+    kpiCard(fmtP(res.pLoss),'P(итог < $100)',res.pLoss>0.5?'neg':'')+
+    kpiCard(fmtP(res.pHalf),'P(просадка ≥ 50%)',res.pHalf>0.25?'neg':'')+
+    kpiCard(fmtP(res.ruinP,1),'P(руина: банк < $1)',res.ruinP>0.02?'neg':'pos')+
+    kpiCard(fmtP(res.top1Share),'профита приносит топ-1% ставок','gold');
+  document.getElementById('fanSub').innerHTML=
+    `Пул: <b>${offers.length} оферов</b>, средний backer-ROI <b>${fmtP(offers.reduce((a,o)=>a+o.br,0)/offers.length,1)}</b> · `+
+    `${horizon} ставок ≈ <b>${days} дней</b> при ${conc}/день · ITM ${fmtP(itm)} · 3000 симуляций`;
+  drawFan(document.getElementById('fanBox'),res,horizon);
+  drawHist(document.getElementById('histBox'),res.finals);
+  document.getElementById('distStats').innerHTML=`
+    <h3 style="margin-top:2px">Хвосты и просадки</h3>
+    <table><tbody>
+    <tr><td>P5 / медиана / P95</td><td class="n">${fmt$(res.p5)} / ${fmt$(res.med)} / ${fmt$(res.p95)}</td></tr>
+    <tr><td>Медианная максимальная просадка</td><td class="n">${fmtP(res.ddMed)}</td></tr>
+    <tr><td>Доля ставок «в деньгах» (модель)</td><td class="n">${fmtP(res.itmWins,1)}</td></tr>
+    <tr><td>Разница среднее − медиана</td><td class="n">${fmt$(res.mean-res.med)}</td></tr>
+    </tbody></table>
+    <div class="sub" style="margin-top:8px">Среднее выше медианы — классика лотерейного хвоста: б&oacute;льшая часть
+    EV сидит в редких крупных заносах. Типичный (медианный) сценарий скромнее «ожидаемого».</div>`;
+
+  const kinds=[['Все BUY','all'],['< $50','lo'],['$50–200','mid'],['$200+','hi']];
+  const rows=kinds.map(([name,k])=>{
+    const off=poolOffers(k); if(off.length===0)return null;
+    const p=prepPool(off,itm,capScale);
+    const r=simulate(p,{nSims:1500,horizon,conc,itm,start:100});
+    return {name:`${name} (${off.length})`,med:r.med,mean:r.mean,p5:r.p5,p95:r.p95,
+      edge:r.edge,sd:r.sigma,ruin:r.ruinP,pHalf:r.pHalf,
+      shp:r.edge/r.sigma,n:off.length};
+  }).filter(Boolean);
+  document.getElementById('cmpBox').innerHTML=`<table>
+    <thead><tr><th>Пул</th><th class="n">эдж/$1</th><th class="n">σ/$1</th><th class="n">эдж/σ</th>
+    <th class="n">медиана</th><th class="n">EV</th><th class="n">P5</th><th class="n">P95</th>
+    <th class="n">P(дд≥50%)</th><th class="n">P(руина)</th></tr></thead><tbody>`+
+    rows.map(r=>`<tr${r.shp===Math.max(...rows.map(x=>x.shp))?' class="hl"':''}><td>${r.name}</td>
+      <td class="n">${fmtP(r.edge,1)}</td><td class="n">${r.sd.toFixed(1)}</td><td class="n">${r.shp.toFixed(3)}</td>
+      <td class="n">${fmt$(r.med)}</td><td class="n">${fmt$(r.mean)}</td><td class="n">${fmt$(r.p5)}</td>
+      <td class="n">${fmt$(r.p95)}</td><td class="n">${fmtP(r.pHalf)}</td><td class="n">${fmtP(r.ruin,1)}</td></tr>`).join('')+
+    '</tbody></table>';
+  drawCmp(document.getElementById('cmpChart'),rows);
+  const best=rows.reduce((a,b)=>b.shp>a.shp?b:a);
+  document.getElementById('cmpNote').innerHTML=
+    `<b>Вывод по бендам.</b> Маркап падает с ростом бай-ина (медиана 1.20 на &lt;$10 против 1.05 на $200+),
+    поэтому номинальный эдж на низких ставках выше. Но поля микро-турниров в разы больше — хвост жирнее, σ выше,
+    и медианный исход хуже среднего сильнее. Лучший риск-скорректированный профиль (эдж/σ) в этом прогоне — <b>${best.name}</b>.
+    Дополнительный минус хай-стейкс: пул оферов тонкий (${rows[rows.length-1].n} шт.) — диверсификация упирается в доступность.`;
+
+  document.getElementById('kellyNote').innerHTML=
+    `<b>Про размер ставки (Келли).</b> При эдже ${fmtP(res.edge,1)} и σ≈${res.sigma.toFixed(1)} на $1
+    полный Келли ≈ эдж/σ² = ${fmtP(res.edge/(res.sigma*res.sigma),2)} банкролла на ставку —
+    это ~$${(100*res.edge/(res.sigma*res.sigma)).toFixed(2)} на $100. Ставка $1 (1%) — примерно
+    ${(0.01/(res.edge/(res.sigma*res.sigma))).toFixed(1)}× Келли: рост почти максимальный, но просадки ≥50%
+    случаются в ${fmtP(res.pHalf)} сценариев. Хотите спокойнее — либо $0.5 юниты, либо докуп только из прибыли.`;
+}
+
+// ---------- horses table ----------
+function horses(){
+  const h=DATA.horses;
+  document.getElementById('horseBox').innerHTML=`<table>
+  <thead><tr><th>Игрок</th><th class="n">Игр</th><th class="n">ABI</th><th class="n">ROI совокупный</th>
+  <th class="n">Av.ROI</th><th class="n">Профит</th><th class="n">Ability</th><th>Стата</th></tr></thead><tbody>`+
+  h.map(p=>`<tr><td><b>${p.a}</b></td><td class="n">${p.g.toLocaleString('ru')}</td>
+    <td class="n">$${p.abi}</td><td class="n" style="color:${p.roi>0?'var(--felt-deep)':'var(--red)'}">${fmtP(p.roi,1)}</td>
+    <td class="n">${p.rav===null?'—':fmtP(p.rav,1)}</td><td class="n">$${p.tp.toLocaleString('ru')}</td>
+    <td class="n">${p.l??'—'}</td><td>${p.s==='memory-batch2'?'<span class="pill mem">прод-БД</span>':'<span class="pill buy">SharkScope</span>'}</td></tr>`).join('')+
+  '</tbody></table>';
+}
+
+document.getElementById('itm').addEventListener('input',e=>document.getElementById('itmV').textContent=e.target.value+'%');
+document.getElementById('cap').addEventListener('input',e=>document.getElementById('capV').textContent=(e.target.value/10).toFixed(1)+'×');
+document.getElementById('run').addEventListener('click',run);
+horses();run();
+</script>
