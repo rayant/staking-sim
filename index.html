@@ -1,430 +1,595 @@
+<!doctype html>
+<html lang="ru">
+<head>
 <meta charset="utf-8">
-<title>Стейкинг $100 × $1: Монте-Карло дисперсии</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Kelly-деплой бэкинга: эдж +10%, оптимальная доля банка на день + компаунд Monte-Carlo распределений">
+<title>Kelly-деплой бэкинга — $1000, эдж +10%</title>
 <style>
   :root{
-    --ink:#1c2823; --paper:#f5f7f4; --card:#ffffff; --felt:#1e6b4e; --felt-deep:#14503a;
-    --red:#b0433a; --muted:#64756c; --line:#dde4de; --gold:#b98a2f; --band:#e3ece6;
+    --bg:#0b1310; --panel:#111d18; --panel2:#16241d; --line:#22362c; --line2:#2d4739;
+    --text:#d6e7dc; --muted:#7f9a8c; --dim:#56705f;
+    --green:#3ddc84; --gold:#eab646; --red:#ec5b52; --cash:#5ec8ff;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   }
   *{box-sizing:border-box}
-  body{background:var(--paper);color:var(--ink);font:15px/1.55 system-ui,'Segoe UI',sans-serif;margin:0;padding:0 16px 64px}
-  .wrap{max-width:980px;margin:0 auto}
-  header{padding:36px 0 18px;border-bottom:3px solid var(--felt)}
-  h1{font-family:Georgia,'Times New Roman',serif;font-size:30px;line-height:1.2;margin:0 0 6px;text-wrap:balance}
-  h2{font-family:Georgia,serif;font-size:21px;margin:44px 0 12px;text-wrap:balance}
-  h3{font-size:15px;margin:18px 0 8px}
-  .sub{color:var(--muted);font-size:14px;max-width:70ch}
-  .eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--felt);font-weight:600}
-  .num,td.n,th.n{font-family:Consolas,'Cascadia Mono',monospace;font-variant-numeric:tabular-nums}
-  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(140px,100%),1fr));gap:10px;margin:22px 0}
-  .kpi{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:12px 14px}
-  .kpi .v{font-family:Consolas,monospace;font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
-  .kpi .l{font-size:12px;color:var(--muted);margin-top:2px}
-  .kpi .v.pos{color:var(--felt)} .kpi .v.neg{color:var(--red)} .kpi .v.gold{color:var(--gold)}
-  .panel{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px 18px;margin:14px 0}
-  .controls{display:flex;flex-wrap:wrap;gap:16px 22px;align-items:flex-end}
-  .ctl{display:flex;flex-direction:column;gap:4px;min-width:120px}
-  .ctl label{font-size:12px;color:var(--muted)}
-  .ctl select,.ctl input[type=range]{accent-color:var(--felt)}
-  .ctl select{padding:5px 8px;border:1px solid var(--line);border-radius:5px;background:#fff;font:inherit}
-  .ctl input[type=number]{padding:5px 8px;border:1px solid var(--line);border-radius:5px;background:#fff;font:inherit;font-family:Consolas,monospace;width:96px}
-  .ctl .rv{font-family:Consolas,monospace;font-size:13px}
-  button{background:var(--felt);color:#fff;border:0;border-radius:6px;padding:9px 22px;font:600 14px system-ui;cursor:pointer}
-  button:hover{background:var(--felt-deep)}
-  button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
-  svg{display:block;max-width:100%;height:auto}
-  .chartbox{overflow-x:auto}
-  table{border-collapse:collapse;width:100%;font-size:13.5px}
-  th{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:left;padding:7px 10px;border-bottom:2px solid var(--line)}
-  td{padding:6px 10px;border-bottom:1px solid var(--line)}
-  th.n,td.n{text-align:right}
-  tr.hl td{background:var(--band)}
-  .tablebox{overflow-x:auto}
-  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:600}
-  .pill.buy{background:var(--band);color:var(--felt-deep)}
-  .pill.mem{background:#f3ead6;color:var(--gold)}
-  .note{background:var(--band);border-left:3px solid var(--felt);padding:12px 16px;border-radius:0 6px 6px 0;font-size:14px;margin:14px 0}
-  .warn{background:#f6ebe9;border-left:3px solid var(--red)}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
-  .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12.5px;color:var(--muted);margin:6px 2px}
-  .legend span{display:inline-flex;align-items:center;gap:6px}
-  .sw{width:18px;height:10px;border-radius:2px;display:inline-block}
-  footer{margin-top:48px;color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padding-top:14px}
-  ul{padding-left:22px} li{margin:4px 0}
-  .flash{transition:opacity .25s} @media(prefers-reduced-motion:reduce){.flash{transition:none}}
+  body{margin:0}
+  .wrap{background:var(--bg); color:var(--text); font-family:var(--sans); min-height:100vh;
+    padding:28px clamp(14px,4vw,52px) 64px;
+    background-image:radial-gradient(1200px 600px at 82% -10%, #14261d 0%, transparent 60%);}
+  .inner{max-width:1120px; margin:0 auto}
+  a{color:var(--cash)}
+  .eyebrow{font-family:var(--mono); font-size:11px; letter-spacing:.28em; text-transform:uppercase;
+    color:var(--dim); display:flex; gap:10px; align-items:center}
+  .eyebrow::before{content:""; width:22px; height:1px; background:var(--line2)}
+  h1{font-size:clamp(25px,4.3vw,41px); line-height:1.03; margin:.34em 0 .18em; font-weight:800;
+    letter-spacing:-.02em; text-wrap:balance}
+  h1 .accent{color:var(--green)}
+  .lede{color:var(--muted); max-width:66ch; font-size:15px; line-height:1.55; margin:0}
+  .lede b{color:var(--text); font-weight:600}
+
+  .warn-banner{margin:20px 0 6px; border:1px solid #234a34; background:#0f2018; border-radius:12px;
+    padding:13px 16px; font-size:13px; color:#a9d6bd; line-height:1.5; display:flex; gap:11px}
+  .warn-banner b{color:var(--green)}
+  .warn-banner .ic{color:var(--green); font-size:15px; line-height:1.3}
+
+  .controls{margin:22px 0; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px 18px}
+  .ctitle{font-family:var(--mono); font-size:11px; letter-spacing:.18em; text-transform:uppercase;
+    color:var(--dim); margin-bottom:14px; display:flex; justify-content:space-between; align-items:center}
+  .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(146px,1fr)); gap:14px 18px}
+  .field label{display:block; font-size:11px; color:var(--muted); margin-bottom:6px;
+    text-transform:uppercase; letter-spacing:.08em; font-family:var(--mono)}
+  .field input[type=number], .field select{width:100%; background:var(--bg); border:1px solid var(--line2);
+    color:var(--text); font-family:var(--mono); font-size:15px; padding:8px 10px; border-radius:8px; -moz-appearance:textfield}
+  .field input:focus, .field select:focus{outline:2px solid var(--green); outline-offset:-1px; border-color:transparent}
+  .field .rangewrap{display:flex; align-items:center; gap:10px}
+  .field input[type=range]{flex:1; accent-color:var(--green)}
+  .field input[type=range]:disabled{opacity:.4}
+  .field .rv{font-family:var(--mono); font-size:13px; color:var(--gold); min-width:46px; text-align:right}
+  .field.dim label{color:var(--dim)}
+  .btnrow{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:14px}
+  button.reroll{background:var(--panel2); color:var(--text); border:1px solid var(--line2);
+    font-family:var(--mono); font-size:12px; letter-spacing:.06em; text-transform:uppercase;
+    padding:8px 14px; border-radius:8px; cursor:pointer}
+  button.reroll:hover{border-color:var(--green); color:var(--green)}
+  button.reroll:focus-visible{outline:2px solid var(--green); outline-offset:2px}
+  .status{font-family:var(--mono); font-size:11px; color:var(--dim)}
+
+  /* kelly calc panel */
+  .kpanel{border:1px solid #285a3c; border-radius:14px; background:linear-gradient(180deg,#122820,#101d17);
+    padding:18px 20px 20px; margin:20px 0}
+  .kpanel h2{font-size:16px; margin:0 0 3px; font-weight:700}
+  .kpanel .cap{color:var(--muted); font-size:13px; margin:0 0 16px; line-height:1.5; max-width:74ch}
+  .kwrap{display:grid; grid-template-columns:1.1fr .9fr; gap:20px; align-items:center}
+  .kcalc{font-family:var(--mono); font-size:13.5px; line-height:2; background:var(--bg); border:1px solid var(--line);
+    border-radius:10px; padding:14px 16px}
+  .kcalc .row{display:flex; justify-content:space-between; gap:12px; border-bottom:1px dashed var(--line); padding:3px 0}
+  .kcalc .row:last-child{border-bottom:none}
+  .kcalc .lbl{color:var(--muted)} .kcalc .val{color:var(--text); font-variant-numeric:tabular-nums}
+  .kcalc .val.hi{color:var(--gold)}
+  .kformula{color:var(--cash); background:#0d1b22; border-color:#1c3a44}
+  .kout{text-align:center; padding:6px 0}
+  .kout .big{font-size:clamp(38px,7vw,64px); font-weight:800; color:var(--green); letter-spacing:-.02em; line-height:1;
+    font-variant-numeric:tabular-nums}
+  .kout .biglbl{font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); margin-top:8px}
+  .kout .money{font-family:var(--mono); font-size:20px; color:var(--cash); margin-top:12px; font-variant-numeric:tabular-nums}
+  .kout .imp{font-size:12.5px; color:var(--muted); margin-top:10px; line-height:1.5}
+  .kout .imp b{color:var(--text)}
+  .khalf{font-family:var(--mono); font-size:12px; color:var(--gold); margin-top:10px}
+
+  .hero{display:grid; grid-template-columns:1.15fr 1.15fr 1fr; gap:16px; margin:16px 0}
+  .hcard{border:1px solid var(--line); border-radius:14px; padding:18px 20px; background:var(--panel)}
+  .hcard .tag{font-family:var(--mono); font-size:10.5px; letter-spacing:.13em; text-transform:uppercase;
+    color:var(--muted); margin-bottom:12px; display:flex; align-items:center; gap:7px}
+  .hcard.med{border-color:#1f4a34} .hcard.mean{border-color:#4a3a18}
+  .med .tag{color:var(--cash)} .mean .tag{color:var(--gold)}
+  .dot{width:8px;height:8px;border-radius:50%} .med .dot{background:var(--cash)} .mean .dot{background:var(--gold)}
+  .bignum{font-size:clamp(28px,4.6vw,44px); font-weight:800; letter-spacing:-.02em; line-height:1;
+    font-variant-numeric:tabular-nums; margin:2px 0 4px}
+  .med .bignum{color:var(--cash)} .mean .bignum{color:var(--gold)}
+  .mult{font-family:var(--mono); font-size:13px; color:var(--muted)}
+  .kv{display:grid; grid-template-columns:1fr auto; gap:7px 10px; font-size:13px}
+  .kv .k{color:var(--muted)} .kv .v{font-family:var(--mono); font-variant-numeric:tabular-nums; text-align:right}
+  .v.pos{color:var(--green)} .v.neg{color:var(--red)} .v.warn{color:var(--gold)} .v.cash{color:var(--cash)}
+
+  .panel{border:1px solid var(--line); border-radius:14px; background:var(--panel); padding:18px 20px 20px; margin:16px 0}
+  .panel h2{font-size:16px; margin:0 0 3px; font-weight:700; letter-spacing:-.01em}
+  .panel .cap{color:var(--muted); font-size:13px; margin:0 0 14px; line-height:1.5; max-width:74ch}
+  .panel .cap b{color:var(--text)}
+  .chartbox{width:100%; overflow-x:auto}
+  canvas{display:block; width:100%; height:auto}
+  .legend{display:flex; flex-wrap:wrap; gap:14px 20px; margin-top:12px; font-size:12px; color:var(--muted); font-family:var(--mono)}
+  .legend span{display:inline-flex; align-items:center; gap:7px}
+  .swatch{width:13px; height:10px; border-radius:2px; display:inline-block}
+  .swatch.ln{height:0; border-top:2px solid; width:15px}
+
+  .pcts{display:grid; grid-template-columns:repeat(5,1fr); gap:1px; background:var(--line);
+    border:1px solid var(--line); border-radius:10px; overflow:hidden; margin-top:14px}
+  .pct{background:var(--panel2); padding:11px 8px; text-align:center}
+  .pct .pl{font-family:var(--mono); font-size:10px; letter-spacing:.1em; color:var(--dim); text-transform:uppercase}
+  .pct .pn{font-family:var(--mono); font-size:15px; font-weight:600; margin-top:4px; font-variant-numeric:tabular-nums}
+
+  table{width:100%; border-collapse:collapse; font-size:13px; margin-top:4px}
+  thead th{font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--dim);
+    text-align:right; padding:8px 10px; border-bottom:1px solid var(--line2); font-weight:400}
+  thead th:first-child{text-align:left}
+  tbody td{padding:9px 10px; text-align:right; font-family:var(--mono); font-variant-numeric:tabular-nums; border-bottom:1px solid var(--line)}
+  tbody td:first-child{text-align:left; font-family:var(--sans); color:var(--text)}
+  tbody tr:hover{background:var(--panel2)}
+  tr.hl td{background:#13251b}
+  tr.hl td:first-child{color:var(--green); font-weight:600}
+
+  details.assume{margin-top:22px; border:1px solid var(--line); border-radius:12px; background:var(--panel); padding:2px 18px}
+  details.assume summary{cursor:pointer; padding:14px 0; font-family:var(--mono); font-size:12px; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--muted); list-style:none}
+  details.assume summary::-webkit-details-marker{display:none}
+  details.assume summary::before{content:"▸ "; color:var(--dim)}
+  details.assume[open] summary::before{content:"▾ "}
+  details.assume .body{padding:4px 0 18px; font-size:13.5px; line-height:1.6; color:var(--muted); max-width:80ch}
+  details.assume .body b{color:var(--text)}
+  details.assume ul{padding-left:18px; margin:8px 0}
+  details.assume li{margin:5px 0}
+  .foot{margin-top:26px; font-size:12px; color:var(--dim); line-height:1.6; border-top:1px solid var(--line); padding-top:16px}
+
+  @media(max-width:860px){ .hero{grid-template-columns:1fr 1fr} .kwrap{grid-template-columns:1fr} }
+  @media(max-width:560px){ .hero{grid-template-columns:1fr} .pcts{grid-template-columns:repeat(2,1fr)} }
+  @media(prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
 </style>
-<div class="wrap">
-<header>
-  <div class="eyebrow">poket-stacker · research</div>
-  <h1>По $1 в лучшие оферы: сколько дисперсии придётся пережить</h1>
-  <div class="sub">Монте-Карло на живом пуле BUY-оферов из прод-БД poket-stacker (PokerStake · GGPoker, выгрузка 04.07.2026)
-  и полной SharkScope-стате наших «лошадей». Каждая ставка: $1 в топ-офер по backer-ROI, выигрыш моделируется
-  усечённым Парето-хвостом MTT-выплат.</div>
-</header>
+</head>
+<body>
 
-<div class="kpis" id="kpis"></div>
+<div class="wrap"><div class="inner">
 
-<div class="panel">
+  <div class="eyebrow">Poket-stacker · Kelly-деплой · компаунд Monte-Carlo</div>
+  <h1>Эдж <span class="accent">+10%</span> — сколько банка<br>деплоить в день, чтобы дисперсия не съела рост</h1>
+  <p class="lede">Стратегия: каждый день часть банка раскладываем в доли (по всему пулу офферов), они отыгрываются,
+    прибыль <b>реинвестируем</b>. При эдже +10% ставить <b>весь банк — переставливание</b>: дисперсия дневного
+    множителя (±0.46) сжирает медианный рост. Ниже — <b>расчёт Kelly-доли</b>: столько банка в день, чтобы эдж
+    перевешивал дисперсию, и симуляция уже под этот деплой. Калибровка на прод-данных poket-stacker.</p>
+
+  <div class="warn-banner"><span class="ic">◆</span><div>По умолчанию деплой <b>по Kelly</b> (не весь банк): доля,
+    максимизирующая геометрический — то есть медианный — рост. Хочешь сравнить — переключи «дневной деплой» на
+    «весь банк 100%» и увидишь, как медиана проседает, а разброс раздувается.</div></div>
+
   <div class="controls">
-    <div class="ctl"><label for="bank">Банкролл, $</label>
-      <input type="number" id="bank" value="100" min="10" max="100000" step="10"></div>
-    <div class="ctl"><label for="pool">Пул оферов</label>
-      <select id="pool">
-        <option value="top25">Топ-25 по backer-ROI</option>
-        <option value="all" selected>Все активные BUY</option>
-        <option value="lo">Низкие ставки: бай-ин &lt; $50</option>
-        <option value="mid">Средние: $50–200</option>
-        <option value="hi">Высокие: $200+</option>
-      </select></div>
-    <div class="ctl"><label for="itm">ITM игрока: <span class="rv" id="itmV">16%</span></label>
-      <input type="range" id="itm" min="10" max="22" value="16" step="1"></div>
-    <div class="ctl"><label for="hor">Горизонт, ставок</label>
-      <select id="hor"><option>250</option><option>500</option><option selected>1000</option><option>2000</option></select></div>
-    <div class="ctl"><label for="conc">Ставок в день</label>
-      <select id="conc"><option>10</option><option selected>25</option><option>50</option></select></div>
-    <div class="ctl"><label for="cap">Жирность хвоста: <span class="rv" id="capV">1.0×</span></label>
-      <input type="range" id="cap" min="5" max="20" value="10" step="1"></div>
-    <div class="ctl"><button id="run">Пересчитать</button></div>
+    <div class="ctitle"><span>Параметры</span><span class="status" id="status">—</span></div>
+    <div class="grid">
+      <div class="field"><label>Старт-банк, $</label><input type="number" id="bank" value="1000" min="10" step="100"></div>
+      <div class="field"><label>Дней (оборотов)</label><input type="number" id="days" value="30" min="1" max="180" step="1"></div>
+      <div class="field"><label>Эдж (возврат на $1)</label>
+        <select id="edgePreset">
+          <option value="1.10" selected>+10%</option>
+          <option value="1.08">Консервативный +8%</option>
+          <option value="1.12">Форвардный +12%</option>
+          <option value="1.18">Пул +18% (наблюдаемый)</option>
+          <option value="1.06">+6%</option>
+          <option value="1.00">Нулевой 0% (проверка)</option>
+        </select></div>
+      <div class="field"><label>Пул офферов (K долей/день)</label>
+        <div class="rangewrap"><input type="range" id="pool" min="20" max="200" step="10" value="200"><span class="rv" id="poolv">200</span></div></div>
+      <div class="field"><label>Дневной деплой</label>
+        <select id="deployMode">
+          <option value="kelly" selected>Kelly-оптимум (авто)</option>
+          <option value="half">½ Kelly (осторожно)</option>
+          <option value="full">Весь банк 100%</option>
+          <option value="manual">Вручную…</option>
+        </select></div>
+      <div class="field dim"><label>…деплой, % банка</label>
+        <div class="rangewrap"><input type="range" id="deployManual" min="0.05" max="1" step="0.05" value="0.45" disabled><span class="rv" id="deployManualv">45%</span></div></div>
+      <div class="field"><label>ITM сыгранных</label>
+        <div class="rangewrap"><input type="range" id="itm" min="0.08" max="0.30" step="0.01" value="0.16"><span class="rv" id="itmv">16%</span></div></div>
+      <div class="field"><label>Рефанды (риск-фри)</label>
+        <div class="rangewrap"><input type="range" id="ref" min="0" max="0.55" step="0.01" value="0.30"><span class="rv" id="refv">30%</span></div></div>
+      <div class="field"><label>Хвост выплат (α)</label>
+        <div class="rangewrap"><input type="range" id="alpha" min="1.15" max="2.2" step="0.05" value="1.40"><span class="rv" id="alphav">1.40</span></div></div>
+    </div>
+    <div class="btnrow">
+      <button class="reroll" id="reroll">↻ Перебросить кости</button>
+      <span class="status" id="calib">—</span>
+    </div>
   </div>
-</div>
 
-<h2>Веер траекторий банкролла</h2>
-<div class="sub" id="fanSub"></div>
-<div class="panel chartbox flash" id="fanBox"></div>
-<div class="legend">
-  <span><span class="sw" style="background:#cfe3d6"></span>5–95 перцентиль</span>
-  <span><span class="sw" style="background:#8fc3a4"></span>25–75 перцентиль</span>
-  <span><span class="sw" style="background:var(--felt-deep);height:3px"></span>медиана</span>
-  <span><span class="sw" style="background:var(--gold);height:3px"></span>среднее (EV)</span>
-  <span><span class="sw" style="background:#b0433a88;height:2px"></span>случайные пути</span>
-</div>
+  <div class="kpanel">
+    <h2>Сколько банка деплоить — расчёт по Kelly</h2>
+    <p class="cap">Kelly-доля = столько банка в день, чтобы эдж ровно перевешивал дисперсию. Меньше — недобираешь
+      рост; больше — дисперсия начинает съедать. Всё меряется из текущей модели.</p>
+    <div class="kwrap">
+      <div class="kcalc">
+        <div class="row"><span class="lbl">Эдж за день &nbsp;μ<sub>дня</sub>−1</span><span class="val hi" id="kEdge">—</span></div>
+        <div class="row"><span class="lbl">σ дневного множителя (K долей)</span><span class="val" id="kSigma">—</span></div>
+        <div class="row kformula"><span class="lbl">Kelly</span><span class="val">f* = эдж / (σ² + эдж²)</span></div>
+        <div class="row"><span class="lbl">Подстановка</span><span class="val" id="kSub">—</span></div>
+      </div>
+      <div class="kout">
+        <div class="big" id="kResult">—</div>
+        <div class="biglbl">банка деплоить в день</div>
+        <div class="money" id="kMoney">—</div>
+        <div class="imp" id="kImp">—</div>
+        <div class="khalf" id="kHalf">—</div>
+      </div>
+    </div>
+  </div>
 
-<h2>Распределение итогового банкролла</h2>
-<div class="grid2">
-  <div class="panel chartbox flash" id="histBox"></div>
-  <div class="panel" id="distStats"></div>
-</div>
+  <div class="hero">
+    <div class="hcard med">
+      <div class="tag"><span class="dot"></span>Медианный итог</div>
+      <div class="bignum" id="medVal">—</div>
+      <div class="mult" id="medMult">—</div>
+      <div class="kv" style="margin-top:14px">
+        <div class="k">P(в плюсе)</div><div class="v pos" id="pWin">—</div>
+        <div class="k">P(×2 и выше)</div><div class="v cash" id="p2x">—</div>
+        <div class="k">P(×5 и выше)</div><div class="v cash" id="p5x">—</div>
+      </div>
+    </div>
+    <div class="hcard mean">
+      <div class="tag"><span class="dot"></span>Средний итог (EV)</div>
+      <div class="bignum" id="meanVal">—</div>
+      <div class="mult" id="meanMult">—</div>
+      <div class="kv" style="margin-top:14px">
+        <div class="k">Разрыв медиана↔EV</div><div class="v warn" id="gap">—</div>
+        <div class="k">Дневной множитель</div><div class="v" id="dayMu">—</div>
+        <div class="k">σ дневного</div><div class="v" id="daySd">—</div>
+      </div>
+    </div>
+    <div class="hcard stat">
+      <div class="tag"><span class="dot" style="background:var(--red)"></span>Риск пути</div>
+      <div class="kv" style="font-size:13.5px">
+        <div class="k">P(просадка ≥50%)</div><div class="v warn" id="pDd50">—</div>
+        <div class="k">P(просадка ≥80%)</div><div class="v neg" id="pDd80">—</div>
+        <div class="k">Медиана макс-просадки</div><div class="v" id="medDd">—</div>
+        <div class="k">P(итог &lt; старта)</div><div class="v neg" id="pLoss">—</div>
+        <div class="k">Худший день, ×</div><div class="v neg" id="worstDay">—</div>
+      </div>
+    </div>
+  </div>
 
-<h2>Низкие ставки или побольше?</h2>
-<div class="sub">Одинаковые параметры, четыре пула — сравнение эджа, дисперсии и того, что реально останется в кармане.</div>
-<div class="panel tablebox" id="cmpBox"></div>
-<div class="panel chartbox flash" id="cmpChart"></div>
-<div class="note" id="cmpNote"></div>
+  <div class="panel">
+    <h2>Веер банкролла по дням — перцентильные коридоры</h2>
+    <p class="cap">20 000 симуляций при выбранном деплое. Полосы — где оказывается банк на каждый день: тёмная P25–P75,
+      светлая P5–P95, линия — медиана. Лог-шкала. При Kelly-деплое медиана уверенно растёт, а разброс уже держится в узде.</p>
+    <div class="chartbox"><canvas id="fan" width="1040" height="330"></canvas></div>
+    <div class="legend">
+      <span><span class="swatch" style="background:rgba(61,220,132,.12)"></span>P5–P95</span>
+      <span><span class="swatch" style="background:rgba(61,220,132,.30)"></span>P25–P75</span>
+      <span><span class="swatch ln" style="border-color:var(--cash)"></span>медиана</span>
+      <span><span class="swatch ln" style="border-color:var(--muted); border-top-style:dashed"></span>старт</span>
+    </div>
+  </div>
 
-<h2>Лошади: стата ROI по SharkScope</h2>
-<div class="sub">ROI = совокупный (профит ÷ сумма бай-инов), как считает анализатор. Av.ROI (средний по-турнирный) сильно занижает
-хайвариансных игроков — приведён для сравнения. <b>ITM в GG-стате SharkScope отсутствует</b> — в модели это параметр (слайдер выше).</div>
-<div class="panel tablebox" id="horseBox"></div>
+  <div class="panel">
+    <h2>Распределение итогового банка на день <span id="dLabel">30</span></h2>
+    <p class="cap">Лог-шкала по X. Столбцы — частота итогов. Kelly не убирает хвост, но <b>подтягивает моду и медиану
+      в плюс</b> и сжимает разрыв со средним — рост становится «проживаемым», а не лотерейным.</p>
+    <div class="chartbox"><canvas id="histFinal" width="1040" height="290"></canvas></div>
+    <div class="pcts" id="pcts"></div>
+  </div>
 
-<h2>Что важно понимать</h2>
-<div class="note" id="kellyNote"></div>
-<div class="note warn">
-  <b>Ограничения модели.</b>
-  <ul>
-    <li>SharkScope-стата GG заморожена на сен-2023 (GG закрыл трекинг) — форма игрока могла измениться; анализатор режет за это confidence.</li>
-    <li>Winner's curse при отборе топов: измеренный ROI = скилл + шум, а шум в MTT велик (σ≈6 бай-инов ⇒ ошибка ROI ±11 п.п. даже на 3000 игр, ±19 п.п. на гейте 1000). Ранжирование 185 игроков по ROI поднимает наверх и везучих — форвардный ROI топ-имён ниже исторического (байесовская усадка: минус ~20–40% сверх-ROI у лидеров; средний backer-ROI пула ~19.5% честнее читать как ~11–13%). Сам отбор лучших — это стратегия, а не ошибка; поправка касается только величины ожидаемого эджа.</li>
-    <li>ITM и структура выплат — модельные: поле оценено по бай-ину, минкеш 1.5×, хвост — усечённое Парето. PKO-турниры (баунти) сглаживают хвост — реальная дисперсия чуть ниже модельной при том же ROI.</li>
-    <li>Пул = 132 активных BUY-оферов из прод-БД (скоринг анализатора, 185 игроков со статой, выгрузка 04.07.2026). Пул концентрирован: msxiter (40 оферов) и IIFerchote (29) — половина всех BUY; реальная диверсификация ~25 продавцов, а не 132 независимых ставки.</li>
-    <li>Собственных закрытых позиций (portfolio) в базе пока ноль — эмпирического ITM нет, слайдер ITM остаётся модельным допущением. Когда накопятся первые десятки settled-позиций, модель можно откалибровать по факту.</li>
-  </ul>
-</div>
+  <div class="panel">
+    <h2>Двигатель дисперсии — распределение дневного множителя</h2>
+    <p class="cap">Каждый день банк умножается на среднее из <span id="kLabel">200</span> долей (до применения деплоя).
+      Рефанды дают пол, редкие заносы — правый хвост. Именно ширина этого распределения (σ дня) и задаёт Kelly-долю.</p>
+    <div class="chartbox"><canvas id="histDay" width="1040" height="230"></canvas></div>
+  </div>
 
-<footer>Данные: прод-БД poket-stacker 04.07.2026 — 132 активных BUY-офера (PokerStake, venueId 23) + SharkScope GGNetwork
-(185 игроков, ≥1000 игр для скоринга) · скоринг = AnalyzerService: backer_roi=(roi_eff−premium)/markup, haircut 15%/× сверх 2× ABI,
-max_markup 1.20 · стата заморожена на 2023-09 (GG закрыл трекинг)</footer>
-</div>
+  <div class="panel">
+    <h2>Kelly-деплой и медиана растут с эджем</h2>
+    <p class="cap">Для каждого уровня эджа — <b>своя</b> Kelly-доля (пересчитана под его дисперсию) и медианный итог из
+      $<span id="bLabel">1000</span> при этом деплое. Видно, как рекомендация «сколько деплоить» масштабируется с эджем.
+      Твоя строка подсвечена.</p>
+    <div style="overflow-x:auto">
+    <table id="grid"><thead><tr>
+      <th>Эдж</th><th>Kelly-деплой</th><th>Медиана 14д</th><th>Медиана 30д</th><th>Медиана 60д</th>
+    </tr></thead><tbody></tbody></table></div>
+  </div>
+
+  <details class="assume">
+    <summary>Модель, формула Kelly и допущения</summary>
+    <div class="body">
+      <p><b>Дневной оборот.</b> Банк делится на K независимых долей (пул офферов), разыгрывается доля деплоя d,
+        остальное в кэше. Чистый мультипликатор доли M: рефанд (M=1, ~30%), вне призов (M=0, ~59%),
+        ITM (~16% сыгранных) = минкеш 1.5× × усечённое Парето(α) ÷ маркап; масштаб калибруется под эдж.</p>
+      <p><b>Дневной множитель банка</b> R = 1 + d·(C−1), где C = среднее K долей, E[C]=1+эдж, σ<sub>C</sub>=σ<sub>доли</sub>/√K.</p>
+      <p><b>Формула Kelly (вывод).</b> Максимизируем ожидаемый лог-рост g(d)=E[ln R] ≈ d·эдж − ½·d²·(σ<sub>C</sub>²+эдж²).
+        Приравняв g′(d)=0: <b>d* = эдж / (σ<sub>C</sub>² + эдж²)</b>. Это доля банка, дающая максимум геометрического
+        (медианного) роста. Полный Kelly агрессивен (≈50% шанс просадки ≥50%) — на практике часто берут ½ Kelly.</p>
+      <p><b>Почему не весь банк.</b> При d=1 дисперсия дневного множителя (½σ<sub>C</sub>²) может превысить эдж →
+        медиана падает, хотя среднее растёт (волатильный дренаж / разница арифм. и геом. среднего). Kelly ставит d так,
+        чтобы этого не случилось.</p>
+      <p><b>Практика.</b> «Деплоить 45%» = ставить по всему пулу, но каждой долей меньше 0.5% (например 200×0.225%),
+        либо меньше долей по 0.5%. Держать максимум независимых офферов выгоднее, чем крупнее ставить в немногие.</p>
+      <p><b>Оговорки:</b> активных BUY-офферов реально ~130 и они коррелированы (общие продавцы) → ставь пул ~130;
+        +10% эджа — оптимистичнее форвардного +11–13% с усадкой; ёмкость пула ограничивает рост банка на дистанции;
+        ITM — параметр модели. Это распределение рисков, не прогноз доходности.</p>
+    </div>
+  </details>
+
+  <p class="foot">Monte-Carlo (20 000 траекторий × дней × K долей) в браузере на детерминированном ГПСЧ.
+    Калибровка: прод-инстанс poket-stacker (VPS 95.217.19.72), <code>player_stat</code> / <code>position</code>.
+    Не инвестиционная рекомендация.</p>
+
+</div></div>
 
 <script>
-'use strict';
-const DATA = {"buy":[{"b":5,"m":1,"r":0.5068,"br":0.5068,"o":70,"s":"FlowState!"},{"b":10,"m":1.08,"r":0.5662,"br":0.4502,"o":40,"s":"bopav"},{"b":10,"m":1.08,"r":0.5662,"br":0.4502,"o":40,"s":"bopav"},{"b":8,"m":1.09,"r":0.5662,"br":0.4369,"o":30,"s":"bopav"},{"b":5,"m":1.1,"r":0.5068,"br":0.3699,"o":50,"s":"FlowState!"},{"b":3,"m":1.1,"r":0.5068,"br":0.3699,"o":50,"s":"FlowState!"},{"b":3,"m":1.1,"r":0.5068,"br":0.3699,"o":50,"s":"FlowState!"},{"b":3,"m":1.1,"r":0.5068,"br":0.3699,"o":50,"s":"FlowState!"},{"b":10.8,"m":1.2,"r":0.56,"br":0.3,"o":30,"s":"bopav"},{"b":125,"m":1,"r":0.2794,"br":0.2794,"o":75,"s":"msxiter"},{"b":100,"m":1,"r":0.2794,"br":0.2794,"o":75,"s":"msxiter"},{"b":108,"m":1,"r":0.2794,"br":0.2794,"o":75,"s":"msxiter"},{"b":108,"m":1,"r":0.2794,"br":0.2794,"o":50,"s":"msxiter"},{"b":150,"m":1,"r":0.2794,"br":0.2794,"o":75,"s":"msxiter"},{"b":108,"m":1,"r":0.2794,"br":0.2794,"o":75,"s":"msxiter"},{"b":80,"m":1,"r":0.2794,"br":0.2794,"o":75,"s":"msxiter"},{"b":108,"m":1,"r":0.2794,"br":0.2794,"o":50,"s":"msxiter"},{"b":88,"m":1,"r":0.2794,"br":0.2794,"o":75,"s":"msxiter"},{"b":80,"m":1,"r":0.2794,"br":0.2794,"o":75,"s":"msxiter"},{"b":150,"m":1,"r":0.2794,"br":0.2794,"o":65,"s":"msxiter"},{"b":108,"m":1,"r":0.2794,"br":0.2794,"o":75,"s":"msxiter"},{"b":200,"m":0.99,"r":0.2653,"br":0.2781,"o":70,"s":"Diego Emperador"},{"b":200,"m":1,"r":0.273,"br":0.273,"o":90,"s":"msxiter"},{"b":200,"m":1,"r":0.273,"br":0.273,"o":85,"s":"msxiter"},{"b":88,"m":1.01,"r":0.2794,"br":0.2667,"o":60,"s":"msxiter"},{"b":50,"m":1.01,"r":0.2794,"br":0.2667,"o":50,"s":"msxiter"},{"b":215,"m":1,"r":0.2662,"br":0.2662,"o":75,"s":"msxiter"},{"b":3,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":3.2,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":2.5,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":3,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":3.2,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":2,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":2,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":3,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":3.2,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":2,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":2.5,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":3.2,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":3,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":2.5,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":3.2,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":3,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":2.5,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":3.2,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":3,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":3,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":2.5,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":3,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":2,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":3,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":2,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":2,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":3,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":3.2,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":2.5,"m":1.15,"r":0.4323,"br":0.2455,"o":70,"s":"IIFerchote"},{"b":5.4,"m":1.2,"r":0.4937,"br":0.2448,"o":80,"s":"SilkSpectre"},{"b":525,"m":1.03,"r":0.2709,"br":0.2339,"o":50,"s":"V Balaev"},{"b":32,"m":1.2,"r":0.4783,"br":0.2319,"o":80,"s":"Vadim Danerian"},{"b":108,"m":1.05,"r":0.2794,"br":0.2185,"o":50,"s":"msxiter"},{"b":88,"m":1.05,"r":0.2794,"br":0.2185,"o":60,"s":"msxiter"},{"b":60,"m":1.05,"r":0.2794,"br":0.2185,"o":75,"s":"msxiter"},{"b":54,"m":1.05,"r":0.2794,"br":0.2185,"o":50,"s":"msxiter"},{"b":60,"m":1.05,"r":0.2794,"br":0.2185,"o":75,"s":"msxiter"},{"b":60,"m":1.05,"r":0.2794,"br":0.2185,"o":75,"s":"msxiter"},{"b":88,"m":1.05,"r":0.2794,"br":0.2185,"o":60,"s":"msxiter"},{"b":525,"m":1.05,"r":0.2709,"br":0.2104,"o":50,"s":"V Balaev"},{"b":100,"m":1.05,"r":0.2687,"br":0.2083,"o":60,"s":"Diego Emperador"},{"b":215,"m":1.05,"r":0.259,"br":0.199,"o":50,"s":"Diego Emperador"},{"b":525,"m":1.07,"r":0.2709,"br":0.1878,"o":50,"s":"V Balaev"},{"b":88,"m":1.09,"r":0.2794,"br":0.1738,"o":50,"s":"msxiter"},{"b":54,"m":1.09,"r":0.2794,"br":0.1738,"o":50,"s":"msxiter"},{"b":54,"m":1.09,"r":0.2794,"br":0.1738,"o":50,"s":"msxiter"},{"b":30,"m":1.09,"r":0.2794,"br":0.1738,"o":60,"s":"msxiter"},{"b":44,"m":1.09,"r":0.2794,"br":0.1738,"o":75,"s":"msxiter"},{"b":50,"m":1.09,"r":0.2794,"br":0.1738,"o":75,"s":"msxiter"},{"b":54,"m":1.09,"r":0.2794,"br":0.1738,"o":50,"s":"msxiter"},{"b":30,"m":1.09,"r":0.2794,"br":0.1738,"o":60,"s":"msxiter"},{"b":32,"m":1.09,"r":0.2794,"br":0.1738,"o":50,"s":"msxiter"},{"b":54,"m":1.09,"r":0.2794,"br":0.1738,"o":50,"s":"msxiter"},{"b":50,"m":1.09,"r":0.2794,"br":0.1738,"o":75,"s":"msxiter"},{"b":32,"m":1.09,"r":0.2794,"br":0.1738,"o":50,"s":"msxiter"},{"b":25,"m":1.15,"r":0.3309,"br":0.1573,"o":60,"s":"SLAVENCHEZ2517"},{"b":25,"m":1.15,"r":0.3309,"br":0.1573,"o":60,"s":"SLAVENCHEZ2517"},{"b":25,"m":1.15,"r":0.3309,"br":0.1573,"o":60,"s":"SLAVENCHEZ2517"},{"b":25,"m":1.15,"r":0.3309,"br":0.1573,"o":60,"s":"SLAVENCHEZ2517"},{"b":25,"m":1.15,"r":0.3309,"br":0.1573,"o":60,"s":"SLAVENCHEZ2517"},{"b":840,"m":1.1,"r":0.2709,"br":0.1554,"o":50,"s":"V Balaev"},{"b":200,"m":1.02,"r":0.1743,"br":0.1513,"o":50,"s":"G Zisimopoulos"},{"b":100,"m":1.02,"r":0.1709,"br":0.1479,"o":90,"s":"Runner1"},{"b":300,"m":1.03,"r":0.1743,"br":0.1401,"o":60,"s":"G Zisimopoulos"},{"b":100,"m":1.03,"r":0.1743,"br":0.1401,"o":30,"s":"G Zisimopoulos"},{"b":150,"m":1.03,"r":0.1709,"br":0.1368,"o":85,"s":"Runner1"},{"b":50,"m":1.13,"r":0.2794,"br":0.1322,"o":50,"s":"msxiter"},{"b":50,"m":1.04,"r":0.1743,"br":0.1292,"o":40,"s":"G Zisimopoulos"},{"b":88,"m":1.13,"r":0.2753,"br":0.1286,"o":50,"s":"Santino Reg"},{"b":250,"m":1.05,"r":0.1743,"br":0.1184,"o":60,"s":"G Zisimopoulos"},{"b":50,"m":1.07,"r":0.1924,"br":0.1144,"o":75,"s":"Nikos Valtatzis"},{"b":25,"m":1.2,"r":0.3309,"br":0.1091,"o":50,"s":"SLAVENCHEZ2517"},{"b":10.8,"m":1.2,"r":0.3309,"br":0.1091,"o":50,"s":"SLAVENCHEZ2517"},{"b":10.8,"m":1.1,"r":0.2139,"br":0.1035,"o":30,"s":"XtremeRelax"},{"b":10,"m":1.1,"r":0.2139,"br":0.1035,"o":30,"s":"XtremeRelax"},{"b":200,"m":1.05,"r":0.1561,"br":0.101,"o":49,"s":"HeXagon_"},{"b":50,"m":1.03,"r":0.1231,"br":0.0903,"o":60,"s":"Sambuca777"},{"b":200,"m":0.99,"r":0.0782,"br":0.0891,"o":84,"s":"Chris Oliver"},{"b":100,"m":0.99,"r":0.0782,"br":0.0891,"o":84,"s":"Chris Oliver"},{"b":5.4,"m":1.1,"r":0.1938,"br":0.0853,"o":90,"s":"Apstrik"},{"b":21.6,"m":1.15,"r":0.2424,"br":0.0803,"o":80,"s":"A 2 3"},{"b":215,"m":1,"r":0.0782,"br":0.0782,"o":80,"s":"Chris Oliver"},{"b":60,"m":1,"r":0.0782,"br":0.0782,"o":80,"s":"Chris Oliver"},{"b":300,"m":1,"r":0.0782,"br":0.0782,"o":84,"s":"Chris Oliver"},{"b":100,"m":1,"r":0.0782,"br":0.0782,"o":84,"s":"Chris Oliver"},{"b":88,"m":1,"r":0.0782,"br":0.0782,"o":80,"s":"Chris Oliver"},{"b":54,"m":1,"r":0.0782,"br":0.0782,"o":80,"s":"Chris Oliver"},{"b":1050,"m":1.17,"r":0.2582,"br":0.0754,"o":30,"s":"V Balaev"},{"b":215,"m":1.09,"r":0.1681,"br":0.0717,"o":75,"s":"Runner1"},{"b":25,"m":1.12,"r":0.197,"br":0.0687,"o":40,"s":"Pedro the Bear"},{"b":60,"m":1.01,"r":0.0782,"br":0.0675,"o":80,"s":"Chris Oliver"},{"b":54,"m":1.2,"r":0.2794,"br":0.0662,"o":50,"s":"msxiter"},{"b":32,"m":1.2,"r":0.2794,"br":0.0662,"o":50,"s":"msxiter"},{"b":32,"m":1.2,"r":0.2794,"br":0.0662,"o":50,"s":"msxiter"},{"b":108,"m":1.19,"r":0.2677,"br":0.0653,"o":40,"s":"V Bartko"},{"b":54,"m":1.1,"r":0.1709,"br":0.0644,"o":80,"s":"Runner1"},{"b":54,"m":1.1,"r":0.1709,"br":0.0644,"o":80,"s":"Runner1"},{"b":25,"m":1.1,"r":0.1675,"br":0.0614,"o":50,"s":"alkes24rus"},{"b":25,"m":1.1,"r":0.1675,"br":0.0614,"o":50,"s":"alkes24rus"},{"b":25,"m":1.1,"r":0.1675,"br":0.0614,"o":50,"s":"alkes24rus"},{"b":100,"m":1,"r":0.0557,"br":0.0557,"o":90,"s":"eltutuca1987"},{"b":200,"m":1,"r":0.0557,"br":0.0557,"o":90,"s":"eltutuca1987"},{"b":300,"m":1,"r":0.0557,"br":0.0557,"o":90,"s":"eltutuca1987"},{"b":250,"m":1,"r":0.0557,"br":0.0557,"o":90,"s":"eltutuca1987"},{"b":88,"m":1.11,"r":0.1709,"br":0.0548,"o":75,"s":"Runner1"}],"horses":[{"a":"Hellblade-","g":3045,"abi":4,"roi":1.209,"rav":0.766,"tp":13978,"l":79,"s":"SHARKSCOPE"},{"a":"XLR0001","g":1367,"abi":13,"roi":0.87,"rav":0.727,"tp":15763,"l":82,"s":"SHARKSCOPE"},{"a":"Lucky-Lucky","g":10819,"abi":55,"roi":0.712,"rav":0.026,"tp":635769,"l":97,"s":"SHARKSCOPE"},{"a":"VIEMK","g":4827,"abi":19,"roi":0.666,"rav":0.01,"tp":84770,"l":88,"s":"SHARKSCOPE"},{"a":"huower","g":4606,"abi":9,"roi":0.629,"rav":0.518,"tp":27985,"l":80,"s":"SHARKSCOPE"},{"a":"bopav","g":7173,"abi":5,"roi":0.566,"rav":0.636,"tp":26161,"l":79,"s":"SHARKSCOPE"},{"a":"Sobral","g":7131,"abi":4,"roi":0.531,"rav":0.277,"tp":17218,"l":77,"s":"SHARKSCOPE"},{"a":"FlowState!","g":3673,"abi":3,"roi":0.507,"rav":0.42,"tp":6342,"l":76,"s":"SHARKSCOPE"},{"a":"SilkSpectre","g":4157,"abi":10,"roi":0.494,"rav":0.762,"tp":20325,"l":80,"s":"SHARKSCOPE"},{"a":"Vadim Danerian","g":5246,"abi":15,"roi":0.484,"rav":0.042,"tp":51988,"l":83,"s":"SHARKSCOPE"},{"a":"M Alexandru","g":2207,"abi":94,"roi":0.465,"rav":0.145,"tp":113588,"l":97,"s":"SHARKSCOPE"},{"a":"Armanus","g":7920,"abi":9,"roi":0.449,"rav":0.275,"tp":35911,"l":80,"s":"SHARKSCOPE"},{"a":"Fernando Olimpio","g":1740,"abi":176,"roi":0.441,"rav":0.135,"tp":166577,"l":97,"s":"SHARKSCOPE"},{"a":"IIFerchote","g":3862,"abi":2,"roi":0.432,"rav":0.284,"tp":3356,"l":73,"s":"SHARKSCOPE"},{"a":"MagiaW11","g":2516,"abi":15,"roi":0.415,"rav":0.596,"tp":21045,"l":86,"s":"SHARKSCOPE"},{"a":"xdhilal69","g":1072,"abi":7,"roi":0.409,"rav":0.726,"tp":3424,"l":76,"s":"SHARKSCOPE"},{"a":"ruso ligador","g":1423,"abi":4,"roi":0.4,"rav":0.49,"tp":2926,"l":74,"s":"SHARKSCOPE"},{"a":"AlexGrin","g":2414,"abi":3,"roi":0.361,"rav":0.229,"tp":2900,"l":74,"s":"SHARKSCOPE"}]};
+(function(){
+  "use strict";
+  function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);
+    t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+  let SEED=20260706;
+  const el=id=>document.getElementById(id);
+  const P={bank:1000,days:30,edge:1.10,pool:200,deployMode:'kelly',deployManual:0.45,
+           itm:0.16,ref:0.30,alpha:1.40,minCash:1.5,markup:1.15,tailCap:600,trials:20000};
 
-// ---------- payout model: truncated Pareto tail over mincash ----------
-const M0 = 1.5; // min-cash multiplier
-function tpMean(a,m0,cap){ if(Math.abs(a-1)<1e-9)a=1+1e-6; const q=Math.pow(m0/cap,a);
-  return a*Math.pow(m0,a)*(Math.pow(cap,1-a)-Math.pow(m0,1-a))/((1-a)*(1-q)); }
-function tpM2(a,m0,cap){ if(Math.abs(a-2)<1e-9)a=2+1e-6; const q=Math.pow(m0/cap,a);
-  return a*Math.pow(m0,a)*(Math.pow(cap,2-a)-Math.pow(m0,2-a))/((2-a)*(1-q)); }
-function solveAlpha(target,m0,cap){
-  if(target<=m0*1.02) return 25;
-  let lo=0.05,hi=25;
-  if(tpMean(lo,m0,cap)<target) return lo; // cap too low to reach mean — model floors EV slightly
-  for(let i=0;i<60;i++){ const mid=(lo+hi)/2; (tpMean(mid,m0,cap)>target)?lo=mid:hi=mid; }
-  return (lo+hi)/2;
-}
-function fieldSize(b){ return Math.max(120,Math.min(8000,6000*Math.pow(b,-0.5))); }
+  function readParams(){
+    P.bank=Math.max(10,+el('bank').value||1000);
+    P.days=Math.max(1,Math.min(180,Math.round(+el('days').value||30)));
+    P.edge=+el('edgePreset').value; P.pool=Math.round(+el('pool').value);
+    P.deployMode=el('deployMode').value; P.deployManual=+el('deployManual').value;
+    P.itm=+el('itm').value; P.ref=+el('ref').value; P.alpha=+el('alpha').value;
+    el('poolv').textContent=P.pool; el('itmv').textContent=Math.round(P.itm*100)+'%';
+    el('refv').textContent=Math.round(P.ref*100)+'%'; el('alphav').textContent=P.alpha.toFixed(2);
+  }
+  function effK(){ return Math.max(1,P.pool); }
+  function calibrate(rng){
+    const base=P.minCash/P.markup; let sumT=0,K=60000;
+    for(let i=0;i<K;i++){let t=Math.pow(1-rng(),-1/P.alpha); if(t>P.tailCap)t=P.tailCap; sumT+=t;}
+    const Et=sumT/K, A=(1-P.ref)*P.itm*base*Et, scale=A>0?(P.edge-P.ref)/A:0;
+    return {base,scale,Et};
+  }
+  function sampleM(rng,cal){
+    if(rng()<P.ref) return 1.0;
+    if(rng()<P.itm){let t=Math.pow(1-rng(),-1/P.alpha); if(t>P.tailCap)t=P.tailCap; return cal.base*cal.scale*t;}
+    return 0;
+  }
+  function pct(a,p){const n=a.length; if(!n)return 0; const idx=(n-1)*p,lo=Math.floor(idx),hi=Math.ceil(idx);
+    return lo===hi?a[lo]:a[lo]+(a[hi]-a[lo])*(idx-lo);}
+  const money=v=>(v<0?'-$':'$')+Math.abs(Math.round(v)).toLocaleString('en-US');
+  const moneyK=v=>{const a=Math.abs(v),s=v<0?'-$':'$';
+    if(a>=1e6)return s+(a/1e6).toFixed(a>=1e7?0:1)+'M';
+    if(a>=1e4)return s+(a/1e3).toFixed(0)+'k';
+    if(a>=1000)return s+(a/1e3).toFixed(1)+'k'; return money(v);};
+  const pctStr=v=>(v*100<0.05&&v>0?'<0.1':(v*100).toFixed(v>=0.1?0:1))+'%';
+  const xMult=v=>{const r=v/P.bank; return r>=100?'×'+Math.round(r):r>=10?'×'+r.toFixed(0):'×'+r.toFixed(r>=1?1:2);};
 
-function prepPool(offers,itm,capScale){
-  return offers.map(o=>{
-    const cap=Math.max(M0*2,0.13*fieldSize(o.b)*capScale);
-    const target=(1+o.r)/itm;
-    const a=solveAlpha(target,M0,cap);
-    const q=Math.pow(M0/cap,a);
-    const stake=Math.min(1,o.o/100*o.b*o.m);
-    const evM=tpMean(a,M0,cap)*itm, ev=evM/o.m-1;                 // realized per-$1 edge after cap
-    const varX=itm*tpM2(a,M0,cap)/(o.m*o.m)-Math.pow(evM/o.m,2); // per-$1 variance
-    return {a,q,cap,m:o.m,stake,ev,sd:Math.sqrt(varX)};
-  });
-}
-function sampleM(p){ const u=Math.random(); return M0*Math.pow(1-u*(1-p.q),-1/p.a); }
+  // daily-multiplier stats over K draws (edge & sigma of C)
+  function dayStats(cal){
+    const K=effK(), N=30000, rng=mulberry32(SEED^0x1234), out=new Float64Array(N);
+    let sum=0,sum2=0;
+    for(let i=0;i<N;i++){let s=0; for(let k=0;k<K;k++)s+=sampleM(rng,cal); const C=s/K;
+      out[i]=C; sum+=C; sum2+=C*C;}
+    const mu=sum/N, sd=Math.sqrt(Math.max(0,sum2/N-mu*mu));
+    return {out:Float64Array.from(out).sort(),mu,sd};
+  }
+  function kellyFrac(mu,sd){ const e=mu-1; const f=e/(sd*sd+e*e); return Math.max(0,Math.min(1,f)); }
+  function resolveDeploy(mu,sd){
+    if(P.deployMode==='full')return 1;
+    if(P.deployMode==='manual')return P.deployManual;
+    const k=kellyFrac(mu,sd);
+    return P.deployMode==='half'?k*0.5:k;
+  }
 
-// ---------- Monte-Carlo ----------
-function simulate(pool,opts){
-  const {nSims,horizon,conc,itm,start}=opts;
-  const rounds=Math.ceil(horizon/conc);
-  const pct=[5,25,50,75,95];
-  const chk=Array.from({length:rounds+1},()=>[]);
-  const finals=[],maxDDs=[]; let ruined=0;
-  const retSample=[]; const RS_MAX=120000;
-  for(let s=0;s<nSims;s++){
-    let bank=start,peak=start,maxDD=0,alive=true;
-    chk[0].push(bank);
-    for(let r=1;r<=rounds;r++){
-      if(alive){
-        const c=Math.min(conc,Math.floor(bank));
-        if(c<1){ alive=false; ruined++; }
-        else{
-          let net=0;
-          for(let i=0;i<c;i++){
-            const p=pool[(Math.random()*pool.length)|0];
-            const st=Math.min(p.stake,1);
-            let ret=0;
-            if(Math.random()<itm) ret=st*sampleM(p)/p.m;
-            net+=ret-st;
-            if(retSample.length<RS_MAX) retSample.push(st>0?(ret-st)/st:0);
-          }
-          bank+=net;
-          if(bank>peak)peak=bank;
-          const dd=(peak-bank)/peak; if(dd>maxDD)maxDD=dd;
-          if(bank<1){ alive=false; ruined++; bank=Math.max(bank,0); }
-        }
+  function runDaily(cal,d){
+    const T=P.trials,D=P.days,K=effK();
+    const rng=mulberry32(SEED^0x77aa);
+    const finals=new Float64Array(T);
+    const band=[]; for(let x=0;x<=D;x++) band.push(new Float64Array(T));
+    let dd50=0,dd80=0,loss=0,win=0,two=0,five=0,sumDd=0,worst=Infinity;
+    const ddArr=new Float64Array(T);
+    for(let s=0;s<T;s++){
+      let bank=P.bank,peak=P.bank,maxdd=0; band[0][s]=bank;
+      for(let dy=0;dy<D;dy++){
+        let sum=0; for(let k=0;k<K;k++) sum+=sampleM(rng,cal);
+        const C=sum/K; const R=1+d*(C-1);
+        if(R<worst) worst=R;
+        bank*=R; if(bank<1e-9)bank=0;
+        if(bank>peak)peak=bank;
+        const dd=peak>0?(peak-bank)/peak:0; if(dd>maxdd)maxdd=dd;
+        band[dy+1][s]=bank;
       }
-      chk[r].push(bank);
+      finals[s]=bank; ddArr[s]=maxdd; sumDd+=maxdd;
+      if(maxdd>=0.5)dd50++; if(maxdd>=0.8)dd80++;
+      if(bank<P.bank)loss++; if(bank>P.bank)win++;
+      if(bank>=2*P.bank)two++; if(bank>=5*P.bank)five++;
     }
-    finals.push(bank); maxDDs.push(maxDD);
+    const sorted=Float64Array.from(finals).sort();
+    let sum=0; for(let i=0;i<T;i++)sum+=finals[i];
+    const bp=[]; for(let x=0;x<=D;x++){const c=Float64Array.from(band[x]).sort();
+      bp.push({p5:pct(c,0.05),p25:pct(c,0.25),p50:pct(c,0.5),p75:pct(c,0.75),p95:pct(c,0.95)});}
+    const ddS=Float64Array.from(ddArr).sort();
+    return {finals,sorted,mean:sum/T,med:pct(sorted,0.5),bands:bp,K,
+      dd50:dd50/T,dd80:dd80/T,loss:loss/T,win:win/T,two:two/T,five:five/T,
+      medDd:pct(ddS,0.5),worst:worst,
+      p5:pct(sorted,0.05),p25:pct(sorted,0.25),p75:pct(sorted,0.75),p95:pct(sorted,0.95)};
   }
-  const qs=arr=>{const a=[...arr].sort((x,y)=>x-y);return pct.map(p=>a[Math.min(a.length-1,Math.round(p/100*(a.length-1)))]);};
-  const bands=chk.map(qs);
-  const means=chk.map(a=>a.reduce((x,y)=>x+y,0)/a.length);
-  finals.sort((a,b)=>a-b);
-  const q=p=>finals[Math.min(finals.length-1,Math.round(p*(finals.length-1)))];
-  // concentration: share of gross wins from top 1% stakes
-  const wins=retSample.filter(x=>x>0).sort((a,b)=>b-a);
-  const grossW=wins.reduce((a,b)=>a+b,0);
-  const top1=wins.slice(0,Math.max(1,Math.round(retSample.length*0.01))).reduce((a,b)=>a+b,0);
-  const mu=retSample.reduce((a,b)=>a+b,0)/retSample.length;
-  const sg=Math.sqrt(retSample.reduce((a,b)=>a+(b-mu)*(b-mu),0)/retSample.length);
-  maxDDs.sort((a,b)=>a-b);
-  return {bands,means,finals,ruinP:ruined/nSims,
-    med:q(.5),p5:q(.05),p95:q(.95),mean:means[means.length-1],
-    pLoss:finals.filter(f=>f<start).length/nSims,
-    pHalf:maxDDs.filter(d=>d>=0.5).length/nSims,
-    ddMed:maxDDs[Math.round(0.5*(maxDDs.length-1))],
-    edge:mu,sigma:sg,top1Share:grossW>0?top1/grossW:0,
-    itmWins:retSample.filter(x=>x>0).length/retSample.length,rounds,conc,chk};
-}
 
-// ---------- pools ----------
-function poolOffers(kind){
-  const b=DATA.buy;
-  if(kind==='top25') return [...b].sort((x,y)=>y.br-x.br).slice(0,25);
-  if(kind==='lo') return b.filter(o=>o.b<50);
-  if(kind==='mid') return b.filter(o=>o.b>=50&&o.b<200);
-  if(kind==='hi') return b.filter(o=>o.b>=200);
-  return b;
-}
-
-// ---------- SVG helpers ----------
-const NS='http://www.w3.org/2000/svg';
-function el(t,at){const e=document.createElementNS(NS,t);for(const k in at)e.setAttribute(k,at[k]);return e;}
-function fmt$(v){return '$'+(v>=1000?(v/1000).toFixed(1)+'k':v.toFixed(0));}
-function fmtP(v,d=0){return (v*100).toFixed(d)+'%';}
-
-function drawFan(box,res,horizon,start){
-  box.innerHTML='';
-  const W=920,H=380,L=52,R=14,T=14,B=30;
-  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,width:W,role:'img','aria-label':'Веер траекторий банкролла'});
-  const n=res.bands.length;
-  const yMax=Math.max(res.bands[n-1][4]*1.15,start*1.5), yMin=0;
-  const X=i=>L+(W-L-R)*i/(n-1), Y=v=>T+(H-T-B)*(1-(Math.min(v,yMax)-yMin)/(yMax-yMin));
-  const steps=5;
-  for(let g=0;g<=steps;g++){const v=yMin+(yMax-yMin)*g/steps;
-    svg.appendChild(el('line',{x1:L,x2:W-R,y1:Y(v),y2:Y(v),stroke:'#e5ebe6','stroke-width':1}));
-    const t=el('text',{x:L-6,y:Y(v)+4,'text-anchor':'end','font-size':11,fill:'#64756c','font-family':'Consolas,monospace'});
-    t.textContent=fmt$(v);svg.appendChild(t);}
-  for(let g=0;g<=4;g++){const i=Math.round((n-1)*g/4);
-    const t=el('text',{x:X(i),y:H-8,'text-anchor':'middle','font-size':11,fill:'#64756c','font-family':'Consolas,monospace'});
-    t.textContent=Math.round(horizon*g/4);svg.appendChild(t);}
-  const t2=el('text',{x:W-R,y:H-8,'text-anchor':'end','font-size':11,fill:'#64756c'});t2.textContent='ставок';svg.appendChild(t2);
-  function bandPath(loI,hiI){let d='M';
-    for(let i=0;i<n;i++)d+=`${X(i).toFixed(1)},${Y(res.bands[i][loI]).toFixed(1)} `;
-    for(let i=n-1;i>=0;i--)d+=`L${X(i).toFixed(1)},${Y(res.bands[i][hiI]).toFixed(1)} `;
-    return d+'Z';}
-  svg.appendChild(el('path',{d:bandPath(0,4),fill:'#cfe3d6',opacity:.75}));
-  svg.appendChild(el('path',{d:bandPath(1,3),fill:'#8fc3a4',opacity:.8}));
-  svg.appendChild(el('line',{x1:L,x2:W-R,y1:Y(start),y2:Y(start),stroke:'#64756c','stroke-dasharray':'2 4','stroke-width':1}));
-  const sims=res.chk[0].length;
-  for(let sp=0;sp<3;sp++){
-    const idx=(Math.random()*sims)|0;
-    let d='M';
-    for(let i=0;i<n;i++)d+=`${i?'L':''}${X(i).toFixed(1)},${Y(res.chk[i][idx]).toFixed(1)} `;
-    svg.appendChild(el('path',{d,fill:'none',stroke:'#b0433a',opacity:.45,'stroke-width':1.2}));
+  function runGrid(){
+    const edges=[[1.06,'+6%'],[1.08,'+8%'],[1.10,'+10%'],[1.12,'+12%']];
+    const daysArr=[14,30,60]; const T=3000, K=effK();
+    const rows=[];
+    for(const [e,lbl] of edges){
+      const saved=P.edge; P.edge=e; const cal=calibrate(mulberry32(SEED^0xBEEF));
+      // sigma of daily multiplier at this edge
+      const rngS=mulberry32(SEED^0xD1CE); let s=0,s2=0; const NS=6000;
+      for(let i=0;i<NS;i++){let sm=0; for(let k=0;k<K;k++)sm+=sampleM(rngS,cal); const c=sm/K; s+=c; s2+=c*c;}
+      const mu=s/NS, sd=Math.sqrt(Math.max(0,s2/NS-mu*mu)); let dep=kellyFrac(mu,sd);
+      if(P.deployMode==='half')dep*=0.5; else if(P.deployMode==='full')dep=1; else if(P.deployMode==='manual')dep=P.deployManual;
+      const meds=[];
+      for(const D of daysArr){
+        const rng=mulberry32(SEED^(D*2654435761)^Math.floor(e*1000));
+        const fin=new Float64Array(T);
+        for(let t=0;t<T;t++){let bank=P.bank;
+          for(let dy=0;dy<D;dy++){let sm=0; for(let k=0;k<K;k++)sm+=sampleM(rng,cal);
+            bank*=(1+dep*(sm/K-1)); if(bank<1e-9){bank=0;break;}}
+          fin[t]=bank;}
+        const sr=Float64Array.from(fin).sort(); meds.push(pct(sr,0.5));
+      }
+      P.edge=saved; rows.push({lbl,e,dep,meds});
+    }
+    return {rows,daysArr};
   }
-  let dm='M',de='M';
-  for(let i=0;i<n;i++){dm+=`${i?'L':''}${X(i).toFixed(1)},${Y(res.bands[i][2]).toFixed(1)} `;
-    de+=`${i?'L':''}${X(i).toFixed(1)},${Y(res.means[i]).toFixed(1)} `;}
-  svg.appendChild(el('path',{d:de,fill:'none',stroke:'#b98a2f','stroke-width':2.2,'stroke-dasharray':'6 4'}));
-  svg.appendChild(el('path',{d:dm,fill:'none',stroke:'#14503a','stroke-width':2.6}));
-  const lab=(v,txt,col)=>{const t=el('text',{x:W-R-4,y:Y(v)-5,'text-anchor':'end','font-size':11.5,fill:col,'font-weight':600,'font-family':'Consolas,monospace'});t.textContent=txt;svg.appendChild(t);};
-  lab(res.bands[n-1][4],'P95 '+fmt$(res.bands[n-1][4]),'#3f7a5c');
-  lab(res.bands[n-1][2],'мед '+fmt$(res.med),'#14503a');
-  lab(res.bands[n-1][0],'P5 '+fmt$(res.p5),'#b0433a');
-  box.appendChild(svg);
-}
 
-function drawHist(box,finals,start){
-  box.innerHTML='';
-  const W=460,H=300,L=40,R=10,T=12,B=42;
-  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,width:'100%',role:'img','aria-label':'Гистограмма итогового банкролла'});
-  const mults=[0,0.25,0.5,0.75,1,1.5,2,3,4.5,7,11];
-  const edges=mults.map(m=>m*start).concat([1e12]);
-  const fN=v=>v>=1000?((v/1000).toFixed(v%1000?1:0)+'k'):String(Math.round(v));
-  const labels=edges.slice(0,-1).map((e,i)=>i===0?'<'+fN(edges[1]):(i===edges.length-2?'>'+fN(e):fN(e)+'-'+fN(edges[i+1])));
-  const cnt=new Array(edges.length-1).fill(0);
-  finals.forEach(f=>{for(let i=0;i<edges.length-1;i++)if(f>=edges[i]&&f<edges[i+1]){cnt[i]++;break;}});
-  const mx=Math.max(...cnt)/finals.length;
-  const bw=(W-L-R)/cnt.length;
-  cnt.forEach((c,i)=>{
-    const h=(H-T-B)*(c/finals.length)/mx;
-    const lossy=edges[i+1]<=start;
-    svg.appendChild(el('rect',{x:L+i*bw+2,y:H-B-h,width:bw-4,height:Math.max(h,0.5),rx:2,
-      fill:lossy?'#c98079':'#5fa080'}));
-    const t=el('text',{x:L+i*bw+bw/2,y:H-B+12,'text-anchor':'middle','font-size':9,fill:'#64756c','font-family':'Consolas,monospace'});
-    t.textContent=labels[i];svg.appendChild(t);
-    if(c>0){const p=el('text',{x:L+i*bw+bw/2,y:H-B-h-4,'text-anchor':'middle','font-size':9.5,fill:'#38473f','font-family':'Consolas,monospace'});
-      p.textContent=Math.round(100*c/finals.length)+'%';svg.appendChild(p);}
+  // ---- drawing ----
+  function setup(cv,cssH){const dpr=Math.min(2,window.devicePixelRatio||1);
+    const cssW=cv.clientWidth||cv.parentNode.clientWidth||1000;
+    cv.width=Math.round(cssW*dpr); cv.height=Math.round(cssH*dpr); cv.style.height=cssH+'px';
+    const ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); return {ctx,W:cssW,H:cssH};}
+  const CSS=getComputedStyle(document.documentElement); const C=n=>CSS.getPropertyValue(n).trim();
+
+  function drawFan(res){
+    const cv=el('fan'); const {ctx,W,H}=setup(cv,330); ctx.clearRect(0,0,W,H);
+    const padL=54,padR=18,padT=14,padB=28,plotW=W-padL-padR,plotH=H-padT-padB,D=P.days;
+    let lo=P.bank,hi=P.bank;
+    for(const b of res.bands){ if(b.p5>1e-9&&b.p5<lo)lo=b.p5; if(b.p95>hi)hi=b.p95; }
+    lo=Math.max(lo,P.bank*0.03); hi=Math.max(hi,P.bank*1.5);
+    const L=Math.log(lo),Hh=Math.log(hi);
+    const ly=v=>padT+plotH-(Math.log(Math.max(v,lo))-L)/(Hh-L)*plotH;
+    const xx=d=>padL+d/D*plotW;
+    ctx.font='10px '+C('--mono'); ctx.textAlign='right';
+    const mults=[0.1,0.25,0.5,1,2,5,10,25,50,100,250,500];
+    for(const m of mults){const v=P.bank*m; if(v<lo*0.9||v>hi*1.1)continue; const y=ly(v);
+      ctx.strokeStyle=m===1?C('--line2'):C('--line'); ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(padL+plotW,y); ctx.stroke();
+      ctx.fillStyle=m===1?C('--muted'):C('--dim'); ctx.fillText(moneyK(v),padL-6,y+3);}
+    function fill(k1,k2,style){ctx.beginPath();
+      for(let d=0;d<=D;d++){const y=ly(res.bands[d][k1]); if(d===0)ctx.moveTo(xx(d),y); else ctx.lineTo(xx(d),y);}
+      for(let d=D;d>=0;d--){const y=ly(res.bands[d][k2]); ctx.lineTo(xx(d),y);}
+      ctx.closePath(); ctx.fillStyle=style; ctx.fill();}
+    fill('p5','p95','rgba(61,220,132,.12)'); fill('p25','p75','rgba(61,220,132,.28)');
+    ctx.beginPath(); for(let d=0;d<=D;d++){const y=ly(res.bands[d].p50); if(d===0)ctx.moveTo(xx(d),y); else ctx.lineTo(xx(d),y);}
+    ctx.strokeStyle=C('--cash'); ctx.lineWidth=2.4; ctx.stroke();
+    ctx.strokeStyle=C('--muted'); ctx.setLineDash([4,4]); ctx.lineWidth=1; const ys=ly(P.bank);
+    ctx.beginPath(); ctx.moveTo(padL,ys); ctx.lineTo(padL+plotW,ys); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle=C('--dim'); ctx.font='10px '+C('--mono'); ctx.textAlign='center';
+    const step=D<=14?Math.max(1,Math.round(D/7)):Math.round(D/6);
+    for(let d=0;d<=D;d+=step) ctx.fillText(d,xx(d),padT+plotH+16);
+    ctx.fillText('день',padL+plotW/2,padT+plotH+27);
+    ctx.fillStyle=C('--green'); ctx.textAlign='right'; ctx.font='11px '+C('--mono');
+    ctx.fillText('P95 '+moneyK(res.bands[D].p95), padL+plotW, ly(res.bands[D].p95)-4);
+  }
+
+  function drawHistLog(res){
+    const cv=el('histFinal'); const {ctx,W,H}=setup(cv,290); ctx.clearRect(0,0,W,H);
+    const padL=20,padR=18,padT=14,padB=40,plotW=W-padL-padR,plotH=H-padT-padB;
+    const lo=Math.max(pct(res.sorted,0.005),P.bank*0.02), hi=Math.max(pct(res.sorted,0.995),lo*1.5);
+    const L=Math.log(lo),Hh=Math.log(hi),nb=52;
+    const bins=new Float64Array(nb);
+    for(let i=0;i<res.finals.length;i++){const v=res.finals[i]; if(v<lo)continue;
+      let b=Math.floor((Math.log(Math.min(v,hi))-L)/(Hh-L)*nb); if(b>=nb)b=nb-1; if(b<0)b=0; bins[b]++;}
+    const maxc=Math.max.apply(null,bins);
+    ctx.strokeStyle=C('--line2'); ctx.lineWidth=1; ctx.beginPath();
+    ctx.moveTo(padL,padT+plotH); ctx.lineTo(padL+plotW,padT+plotH); ctx.stroke();
+    for(let b=0;b<nb;b++){if(!bins[b])continue; const bh=bins[b]/maxc*plotH;
+      const val=Math.exp(L+(b+0.5)/nb*(Hh-L));
+      ctx.fillStyle= val>=P.bank?'rgba(61,220,132,.55)':'rgba(236,91,82,.5)';
+      ctx.fillRect(padL+b/nb*plotW,padT+plotH-bh,Math.max(1,plotW/nb-1),bh);}
+    const vx=v=>padL+(Math.log(Math.min(Math.max(v,lo),hi))-L)/(Hh-L)*plotW;
+    function mk(v,col,lab,top){const px=vx(v); ctx.save(); ctx.strokeStyle=col; ctx.setLineDash([5,4]); ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.moveTo(px,padT-2); ctx.lineTo(px,padT+plotH); ctx.stroke(); ctx.restore();
+      ctx.fillStyle=col; ctx.font='11px '+C('--mono'); ctx.textAlign='center';
+      ctx.fillText(lab,Math.min(Math.max(px,padL+30),padL+plotW-30),top?padT+9:padT+plotH-6);}
+    mk(P.bank,C('--muted'),'старт',true); mk(res.med,C('--cash'),'мед '+moneyK(res.med),false);
+    mk(res.mean,C('--gold'),'EV '+moneyK(res.mean),true);
+    ctx.fillStyle=C('--dim'); ctx.font='10px '+C('--mono'); ctx.textAlign='center';
+    const mults=[0.1,0.25,0.5,1,2,5,10,25,50,100,250,500,1000];
+    for(const m of mults){const v=P.bank*m; if(v<lo||v>hi)continue; ctx.fillText(moneyK(v),vx(v),padT+plotH+16);}
+    ctx.fillText('итоговый банк (лог)',padL+plotW/2,padT+plotH+31);
+  }
+
+  function drawHistDay(day){
+    const cv=el('histDay'); const {ctx,W,H}=setup(cv,230); ctx.clearRect(0,0,W,H);
+    const padL=20,padR=18,padT=14,padB=34,plotW=W-padL-padR,plotH=H-padT-padB;
+    const lo=Math.max(0,pct(day.out,0.002)), hi=Math.max(pct(day.out,0.995),lo+0.1),nb=54;
+    const bins=new Float64Array(nb);
+    for(let i=0;i<day.out.length;i++){const v=day.out[i]; let b=Math.floor((v-lo)/(hi-lo)*nb);
+      if(b>=nb)b=nb-1; if(b<0)b=0; bins[b]++;}
+    const maxc=Math.max.apply(null,bins);
+    ctx.strokeStyle=C('--line2'); ctx.lineWidth=1; ctx.beginPath();
+    ctx.moveTo(padL,padT+plotH); ctx.lineTo(padL+plotW,padT+plotH); ctx.stroke();
+    const vx=v=>padL+(v-lo)/(hi-lo)*plotW;
+    for(let b=0;b<nb;b++){if(!bins[b])continue; const bh=bins[b]/maxc*plotH;
+      const val=lo+(b+0.5)/nb*(hi-lo);
+      ctx.fillStyle= val>=1?'rgba(61,220,132,.55)':'rgba(236,91,82,.5)';
+      ctx.fillRect(padL+b/nb*plotW,padT+plotH-bh,Math.max(1,plotW/nb-1),bh);}
+    ctx.strokeStyle=C('--muted'); ctx.setLineDash([5,4]); ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(vx(1),padT); ctx.lineTo(vx(1),padT+plotH); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle=C('--muted'); ctx.font='11px '+C('--mono'); ctx.textAlign='center'; ctx.fillText('×1',vx(1),padT+9);
+    ctx.fillStyle=C('--gold'); ctx.fillText('среднее ×'+day.mu.toFixed(2),vx(Math.min(day.mu,hi)),padT+plotH-6);
+    ctx.fillStyle=C('--dim'); ctx.font='10px '+C('--mono'); ctx.textAlign='center';
+    for(let t=0;t<=5;t++){const v=lo+(hi-lo)*t/5; ctx.fillText('×'+v.toFixed(2),padL+plotW*t/5,padT+plotH+16);}
+    ctx.fillText('дневной множитель портфеля (до деплоя)',padL+plotW/2,padT+plotH+30);
+  }
+
+  // ---- render ----
+  function renderKelly(day,dep){
+    const e=day.mu-1;
+    el('kEdge').textContent=(e*100).toFixed(1)+'%';
+    el('kSigma').textContent=day.sd.toFixed(3);
+    el('kSub').textContent=e.toFixed(3)+' / ('+day.sd.toFixed(2)+'² + '+e.toFixed(2)+'²) = '+(e/(day.sd*day.sd+e*e)).toFixed(3);
+    el('kResult').textContent=Math.round(dep*100)+'%';
+    el('kMoney').textContent='≈ '+money(dep*P.bank)+' / день в деле';
+    const perStake=dep/effK()*100;
+    el('kImp').innerHTML='по всему пулу = <b>'+effK()+' долей по '+perStake.toFixed(2)+'%</b> банка<br>'+
+      'или <b>'+Math.max(1,Math.round(dep/0.005))+' долей по 0.5%</b> · остальное в кэше';
+    const kf=kellyFrac(day.mu,day.sd);
+    el('kHalf').textContent=(P.deployMode==='full'?'⚠ сейчас весь банк (over-Kelly)':
+      P.deployMode==='half'?'полный Kelly был бы '+Math.round(kf*100)+'%':
+      P.deployMode==='manual'?'Kelly-оптимум здесь ≈ '+Math.round(kf*100)+'%':
+      '½ Kelly (осторожнее) ≈ '+Math.round(kf*50)+'%');
+  }
+  function render(res,day,grid,dep){
+    el('medVal').textContent=moneyK(res.med); el('medMult').textContent=xMult(res.med)+' от старта';
+    el('meanVal').textContent=moneyK(res.mean); el('meanMult').textContent=xMult(res.mean)+' от старта';
+    el('pWin').textContent=pctStr(res.win); el('p2x').textContent=pctStr(res.two); el('p5x').textContent=pctStr(res.five);
+    el('gap').textContent=(res.med>0?(res.mean/res.med).toFixed(1):'∞')+'×';
+    el('dayMu').textContent='×'+day.mu.toFixed(3); el('daySd').textContent='±'+day.sd.toFixed(3);
+    el('pDd50').textContent=pctStr(res.dd50); el('pDd80').textContent=pctStr(res.dd80);
+    el('medDd').textContent=pctStr(res.medDd); el('pLoss').textContent=pctStr(res.loss);
+    el('worstDay').textContent='×'+res.worst.toFixed(2);
+    el('dLabel').textContent=P.days; el('kLabel').textContent=res.K; el('bLabel').textContent=P.bank.toLocaleString('en-US');
+    const rows=[['P5',res.p5],['P25',res.p25],['медиана',res.med],['P75',res.p75],['P95',res.p95]];
+    el('pcts').innerHTML=rows.map(([l,v])=>{const col=v>=P.bank*2?'var(--green)':v>=P.bank?'var(--cash)':v>=P.bank*0.5?'var(--gold)':'var(--red)';
+      return '<div class="pct"><div class="pl">'+l+'</div><div class="pn" style="color:'+col+'">'+moneyK(v)+'</div><div class="pl" style="margin-top:2px">'+xMult(v)+'</div></div>';}).join('');
+    const tb=document.querySelector('#grid tbody');
+    tb.innerHTML=grid.rows.map(r=>{const hl=Math.abs(r.e-P.edge)<1e-9;
+      return '<tr'+(hl?' class="hl"':'')+'><td>'+r.lbl+'</td>'+
+        '<td style="color:var(--green)">'+Math.round(r.dep*100)+'%</td>'+
+        r.meds.map(m=>'<td>'+moneyK(m)+' <span style="color:var(--dim)">'+xMult(m)+'</span></td>').join('')+'</tr>';}).join('');
+    drawFan(res); drawHistLog(res); drawHistDay(day);
+  }
+
+  let busy=false;
+  function recompute(){ if(busy)return; busy=true; el('status').textContent='считаю…'; readParams();
+    // deploy slider sync
+    setTimeout(()=>{ const t0=performance.now();
+      const cal=calibrate(mulberry32(SEED^0xABCD));
+      const day=dayStats(cal);
+      const dep=resolveDeploy(day.mu,day.sd);
+      const manEnabled=(P.deployMode==='manual');
+      el('deployManual').disabled=!manEnabled;
+      document.querySelector('.field.dim').classList.toggle('dim',!manEnabled);
+      if(!manEnabled){ el('deployManual').value=Math.max(0.05,Math.min(1,dep));
+        el('deployManualv').textContent=Math.round(dep*100)+'%'; }
+      else el('deployManualv').textContent=Math.round(P.deployManual*100)+'%';
+      el('calib').textContent='деплой '+Math.round(dep*100)+'%/день · масштаб ×'+cal.scale.toFixed(2)+' · E[M]='+P.edge.toFixed(2);
+      const res=runDaily(cal,dep); const grid=runGrid();
+      renderKelly(day,dep); render(res,day,grid,dep);
+      el('status').textContent=((performance.now()-t0)|0)+' мс · '+P.trials.toLocaleString('ru')+' траекторий';
+      busy=false;
+    },20);
+  }
+  ['bank','days','edgePreset','pool','deployMode','deployManual','itm','ref','alpha'].forEach(id=>{
+    el(id).addEventListener('input',()=>{ if(['pool','itm','ref','alpha','deployManual'].includes(id)){
+      el('poolv').textContent=Math.round(+el('pool').value);
+      el('itmv').textContent=Math.round(+el('itm').value*100)+'%'; el('refv').textContent=Math.round(+el('ref').value*100)+'%';
+      el('alphav').textContent=(+el('alpha').value).toFixed(2);
+      el('deployManualv').textContent=Math.round(+el('deployManual').value*100)+'%';} });
+    el(id).addEventListener('change',recompute);
   });
-  const cap=el('text',{x:L,y:H-6,'font-size':10.5,fill:'#64756c'});cap.textContent='итоговый банкролл, $ (старт $'+fN(start)+' — граница цвета)';svg.appendChild(cap);
-  box.appendChild(svg);
-}
-
-function drawCmp(box,rows,start){
-  box.innerHTML='';
-  const W=920,H=270,L=170,R=30,T=24,B=26;
-  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,width:W,role:'img','aria-label':'Сравнение пулов: медиана и разброс'});
-  const xMax=Math.max(...rows.map(r=>r.p95))*1.06;
-  const X=v=>L+(W-L-R)*Math.min(v,xMax)/xMax;
-  rows.forEach((r,i)=>{
-    const y=T+(H-T-B)*(i+0.5)/rows.length;
-    const nm=el('text',{x:L-10,y:y+4,'text-anchor':'end','font-size':13,fill:'#1c2823','font-weight':600});nm.textContent=r.name;svg.appendChild(nm);
-    svg.appendChild(el('line',{x1:X(r.p5),x2:X(r.p95),y1:y,y2:y,stroke:'#9db8a8','stroke-width':3,'stroke-linecap':'round'}));
-    svg.appendChild(el('circle',{cx:X(r.med),cy:y,r:6,fill:'#14503a'}));
-    svg.appendChild(el('circle',{cx:X(r.mean),cy:y,r:4.5,fill:'none',stroke:'#b98a2f','stroke-width':2.2}));
-    const t=el('text',{x:X(r.p95)+8,y:y+4,'font-size':11,fill:'#64756c','font-family':'Consolas,monospace'});
-    t.textContent=fmt$(r.p95);svg.appendChild(t);
-  });
-  svg.appendChild(el('line',{x1:X(start),x2:X(start),y1:T-6,y2:H-B+6,stroke:'#b0433a','stroke-dasharray':'3 4','stroke-width':1.4}));
-  const s=el('text',{x:X(start),y:12,'text-anchor':'middle','font-size':10.5,fill:'#b0433a'});s.textContent='старт '+fmt$(start);svg.appendChild(s);
-  const cap=el('text',{x:W-R,y:12,'text-anchor':'end','font-size':10.5,fill:'#64756c'});
-  cap.textContent='линия = P5–P95 · точка = медиана · кольцо = EV';
-  svg.appendChild(cap);
-  box.appendChild(svg);
-}
-
-// ---------- render ----------
-function kpiCard(v,l,cls=''){return `<div class="kpi"><div class="v ${cls}">${v}</div><div class="l">${l}</div></div>`;}
-
-function run(){
-  const poolKind=document.getElementById('pool').value;
-  const itm=+document.getElementById('itm').value/100;
-  const horizon=+document.getElementById('hor').value;
-  const conc=+document.getElementById('conc').value;
-  const capScale=+document.getElementById('cap').value/10;
-  const start=Math.max(10,Math.min(100000,Math.round(+document.getElementById('bank').value)||100));
-  document.getElementById('bank').value=start;
-  const offers=poolOffers(poolKind);
-  const pool=prepPool(offers,itm,capScale);
-  const res=simulate(pool,{nSims:3000,horizon,conc,itm,start});
-
-  const days=Math.ceil(horizon/conc);
-  document.getElementById('kpis').innerHTML=
-    kpiCard(fmtP(res.edge,1),'эдж на $1 ставки (реализованный в модели)',res.edge>0?'pos':'neg')+
-    kpiCard('±'+res.sigma.toFixed(1)+'x','σ одной ставки (в долях $1)','')+
-    kpiCard(fmt$(res.med),'медианный итог','')+
-    kpiCard(fmt$(res.mean),'средний итог (EV)','gold')+
-    kpiCard(fmtP(res.pLoss),`P(итог < ${fmt$(start)})`,res.pLoss>0.5?'neg':'')+
-    kpiCard(fmtP(res.pHalf),'P(просадка ≥ 50%)',res.pHalf>0.25?'neg':'')+
-    kpiCard(fmtP(res.ruinP,1),'P(руина: банк < $1)',res.ruinP>0.02?'neg':'pos')+
-    kpiCard(fmtP(res.top1Share),'профита приносит топ-1% ставок','gold');
-  document.getElementById('fanSub').innerHTML=
-    `Банкролл <b>${fmt$(start)}</b> · пул: <b>${offers.length} оферов</b>, средний backer-ROI <b>${fmtP(offers.reduce((a,o)=>a+o.br,0)/offers.length,1)}</b> · `+
-    `${horizon} ставок ≈ <b>${days} дней</b> при ${conc}/день · ITM ${fmtP(itm)} · 3000 симуляций`;
-  drawFan(document.getElementById('fanBox'),res,horizon,start);
-  drawHist(document.getElementById('histBox'),res.finals,start);
-  document.getElementById('distStats').innerHTML=`
-    <h3 style="margin-top:2px">Хвосты и просадки</h3>
-    <table><tbody>
-    <tr><td>P5 / медиана / P95</td><td class="n">${fmt$(res.p5)} / ${fmt$(res.med)} / ${fmt$(res.p95)}</td></tr>
-    <tr><td>Медианная максимальная просадка</td><td class="n">${fmtP(res.ddMed)}</td></tr>
-    <tr><td>Доля ставок «в деньгах» (модель)</td><td class="n">${fmtP(res.itmWins,1)}</td></tr>
-    <tr><td>Разница среднее − медиана</td><td class="n">${fmt$(res.mean-res.med)}</td></tr>
-    </tbody></table>
-    <div class="sub" style="margin-top:8px">Среднее выше медианы — классика лотерейного хвоста: б&oacute;льшая часть
-    EV сидит в редких крупных заносах. Типичный (медианный) сценарий скромнее «ожидаемого».</div>`;
-
-  const kinds=[['Все BUY','all'],['< $50','lo'],['$50–200','mid'],['$200+','hi']];
-  const rows=kinds.map(([name,k])=>{
-    const off=poolOffers(k); if(off.length===0)return null;
-    const p=prepPool(off,itm,capScale);
-    const r=simulate(p,{nSims:1500,horizon,conc,itm,start});
-    return {name:`${name} (${off.length})`,med:r.med,mean:r.mean,p5:r.p5,p95:r.p95,
-      edge:r.edge,sd:r.sigma,ruin:r.ruinP,pHalf:r.pHalf,
-      shp:r.edge/r.sigma,n:off.length};
-  }).filter(Boolean);
-  document.getElementById('cmpBox').innerHTML=`<table>
-    <thead><tr><th>Пул</th><th class="n">эдж/$1</th><th class="n">σ/$1</th><th class="n">эдж/σ</th>
-    <th class="n">медиана</th><th class="n">EV</th><th class="n">P5</th><th class="n">P95</th>
-    <th class="n">P(дд≥50%)</th><th class="n">P(руина)</th></tr></thead><tbody>`+
-    rows.map(r=>`<tr${r.shp===Math.max(...rows.map(x=>x.shp))?' class="hl"':''}><td>${r.name}</td>
-      <td class="n">${fmtP(r.edge,1)}</td><td class="n">${r.sd.toFixed(1)}</td><td class="n">${r.shp.toFixed(3)}</td>
-      <td class="n">${fmt$(r.med)}</td><td class="n">${fmt$(r.mean)}</td><td class="n">${fmt$(r.p5)}</td>
-      <td class="n">${fmt$(r.p95)}</td><td class="n">${fmtP(r.pHalf)}</td><td class="n">${fmtP(r.ruin,1)}</td></tr>`).join('')+
-    '</tbody></table>';
-  drawCmp(document.getElementById('cmpChart'),rows,start);
-  const best=rows.reduce((a,b)=>b.shp>a.shp?b:a);
-  document.getElementById('cmpNote').innerHTML=
-    `<b>Вывод по бендам.</b> Маркап падает с ростом бай-ина (медиана 1.20 на &lt;$10 против 1.05 на $200+),
-    поэтому номинальный эдж на низких ставках выше. Но поля микро-турниров в разы больше — хвост жирнее, σ выше,
-    и медианный исход хуже среднего сильнее. Лучший риск-скорректированный профиль (эдж/σ) в этом прогоне — <b>${best.name}</b>.
-    Дополнительный минус хай-стейкс: пул оферов тонкий (${rows[rows.length-1].n} шт.) — диверсификация упирается в доступность.`;
-
-  const kf=res.edge/(res.sigma*res.sigma);
-  const kx=(1/start)/kf;
-  const tone=kx>=1.5?'заметно агрессивнее полного Келли — глубокие просадки почти гарантированы':
-    kx>=0.7?'около полного Келли — на грани разумной агрессии':
-    'консервативнее полного Келли — руина маловероятна, темп роста ниже максимально возможного';
-  document.getElementById('kellyNote').innerHTML=
-    `<b>Про размер ставки (Келли).</b> При эдже ${fmtP(res.edge,1)} и σ≈${res.sigma.toFixed(1)} на $1
-    полный Келли ≈ эдж/σ² = ${fmtP(kf,2)} банкролла на ставку — это ~$${(start*kf).toFixed(2)} при банкролле ${fmt$(start)}.
-    Ставка $1 = ${fmtP(1/start,2)} банкролла ≈ <b>${kx.toFixed(1)}× Келли</b>: ${tone}.
-    Просадки ≥50% в этом прогоне — ${fmtP(res.pHalf)} сценариев, руина — ${fmtP(res.ruinP,1)}.
-    Хотите спокойнее при том же банкролле — мельче юнит или докуп только из прибыли.`;
-}
-
-// ---------- horses table ----------
-function horses(){
-  const h=DATA.horses;
-  document.getElementById('horseBox').innerHTML=`<table>
-  <thead><tr><th>Игрок</th><th class="n">Игр</th><th class="n">ABI</th><th class="n">ROI совокупный</th>
-  <th class="n">Av.ROI</th><th class="n">Профит</th><th class="n">Ability</th><th>Стата</th></tr></thead><tbody>`+
-  h.map(p=>`<tr><td><b>${p.a}</b></td><td class="n">${p.g.toLocaleString('ru')}</td>
-    <td class="n">$${p.abi}</td><td class="n" style="color:${p.roi>0?'var(--felt-deep)':'var(--red)'}">${fmtP(p.roi,1)}</td>
-    <td class="n">${p.rav===null?'—':fmtP(p.rav,1)}</td><td class="n">$${p.tp.toLocaleString('ru')}</td>
-    <td class="n">${p.l??'—'}</td><td>${p.s==='memory-batch2'?'<span class="pill mem">прод-БД</span>':'<span class="pill buy">SharkScope</span>'}</td></tr>`).join('')+
-  '</tbody></table>';
-}
-
-document.getElementById('itm').addEventListener('input',e=>document.getElementById('itmV').textContent=e.target.value+'%');
-document.getElementById('cap').addEventListener('input',e=>document.getElementById('capV').textContent=(e.target.value/10).toFixed(1)+'×');
-document.getElementById('run').addEventListener('click',run);
-horses();run();
+  el('reroll').addEventListener('click',()=>{SEED=(SEED*1103515245+12345)&0x7fffffff; recompute();});
+  let rz; window.addEventListener('resize',()=>{clearTimeout(rz); rz=setTimeout(recompute,250);});
+  recompute();
+})();
 </script>
+
+</body>
+</html>
